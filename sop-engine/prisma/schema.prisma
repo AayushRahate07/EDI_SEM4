@@ -1,0 +1,91 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// =========================================================================
+// 1. BLUEPRINT TEMPLATES LAYER (Saves what you draw on the canvas interface)
+// =========================================================================
+
+model SopTemplate {
+  id          String   @id @default(uuid())
+  templateId  String   @unique @map("template_id") // Matches "SOP-XXXXX"
+  version     String   @default("1.0.0")
+  startNodeId String?  @map("start_node_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  nodes       SopNode[]
+
+  @@map("sop_templates")
+}
+
+model SopNode {
+  id         String   @id @default(uuid())
+  idFromUi   String   @map("id_from_ui") // Stores UI elements like 'step_manual_1'
+  templateId String   @map("template_id")
+  type       String   // "VERIFICATION" or "MEASUREMENT" (Handled via application string schemas)
+  title      String
+  
+  // Canvas View Coordinates
+  x          Float
+  y          Float
+
+  // Configuration thresholds serialized as raw stringified JSON payloads
+  // VERIFICATION: '{"verified_entity": "Ketoprofen"}'
+  // MEASUREMENT:  '{"target_value": 500, "tolerance": 5}'
+  config     String
+
+  // Relations
+  template   SopTemplate @relation(fields: [templateId], references: [templateId], onDelete: Cascade)
+  
+  // Graph Adjacency Connections
+  outgoingTransitions SopTransition[] @relation("FromNode")
+  incomingTransitions SopTransition[] @relation("ToNode")
+
+  @@unique([templateId, idFromUi])
+  @@map("sop_nodes")
+}
+
+model SopTransition {
+  id         String   @id @default(uuid())
+  fromNodeId String   @map("from_node_id")
+  toNodeId   String   @map("to_node_id")
+  condition  String   @default("DEFAULT") // "DEFAULT", "RESOLVE", "RETRY", "REJECT"
+
+  // Explicit foreign key mappings
+  fromNode   SopNode  @relation("FromNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode     SopNode  @relation("ToNode", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, toNodeId, condition])
+  @@map("sop_transitions")
+}
+
+// =========================================================================
+// 2. RUNTIME INSTANCE EXECUTION LAYER (Tracks active engine states)
+// =========================================================================
+
+model WorkflowRun {
+  id           String     @id @default(uuid())
+  sopId        String
+  status       String     // ACTIVE, COMPLETED
+  currentState String
+  snapshotJson String     // Full XState engine serialization
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  events       RunEvent[]
+}
+
+model RunEvent {
+  id               String      @id @default(uuid())
+  runId            String
+  eventType        String
+  payloadJson      String
+  validationResult String      // PASS, DEVIATION
+  timestamp        DateTime    @default(now())
+  workflowRun      WorkflowRun @relation(fields: [runId], references: [id])
+}
