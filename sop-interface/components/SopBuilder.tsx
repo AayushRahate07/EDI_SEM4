@@ -481,6 +481,8 @@ function Sidebar({
   onSaveAndValidate,
 }: SidebarProps) {
   const [aiInput, setAiInput] = useState("");
+  const [inventoryItems, setInventoryItems] = useState<{ id: string; name: string; nfcUid: string }[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -519,6 +521,16 @@ function Sidebar({
     color: "#9ca3af",
     transition: "all .15s ease",
   };
+
+  // Fetch inventory items once on mount to populate the VERIFICATION dropdown
+  useEffect(() => {
+    setInventoryLoading(true);
+    fetch("http://localhost:3000/api/inventory")
+      .then((r) => r.json())
+      .then((data) => setInventoryItems(Array.isArray(data) ? data : []))
+      .catch(() => {}) // Fail silently — dropdown will just be empty if backend is offline
+      .finally(() => setInventoryLoading(false));
+  }, []);
 
   // 2. Compute edge conversions
   const incomingIds = edges.filter((e) => e.to === node?.id).map((e) => e.from);
@@ -833,15 +845,25 @@ function Sidebar({
             <>
               <div style={sectionStyle}>
                 <label style={labelStyle}>Expected Label</label>
-                <input
-                  style={inputStyle}
-                  type="text"
-                  placeholder="e.g. Powder Container"
+                <select
+                  style={{
+                    ...inputStyle,
+                    opacity: inventoryLoading ? 0.5 : 1,
+                  }}
                   value={node.config.expectedEntity}
                   onChange={(e) =>
                     onUpdateConfig(node.id, "expectedEntity", e.target.value)
                   }
-                />
+                >
+                  <option value="">
+                    {inventoryLoading ? "Loading inventory..." : inventoryItems.length === 0 ? "No items registered" : "-- Select from Inventory --"}
+                  </option>
+                  {inventoryItems.map((item) => (
+                    <option key={item.id} value={item.name}>
+                      {item.name}{item.nfcUid ? ` (${item.nfcUid})` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div style={sectionStyle}>
                 <label style={labelStyle}>Verification Mode</label>

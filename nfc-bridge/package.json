@@ -1,0 +1,17 @@
+{
+  "name": "nfc-bridge",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.16.1",
+    "serialport": "^13.0.0"
+  }
+}
