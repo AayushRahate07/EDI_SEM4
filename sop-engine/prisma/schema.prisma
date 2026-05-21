@@ -20,30 +20,30 @@ model SopTemplate {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  nodes       SopNode[]
+  nodes SopNode[]
 
   @@map("sop_templates")
 }
 
 model SopNode {
-  id         String   @id @default(uuid())
-  idFromUi   String   @map("id_from_ui") // Stores UI elements like 'step_manual_1'
-  templateId String   @map("template_id")
-  type       String   // "VERIFICATION" or "MEASUREMENT" (Handled via application string schemas)
+  id         String @id @default(uuid())
+  idFromUi   String @map("id_from_ui") // Stores UI elements like 'step_manual_1'
+  templateId String @map("template_id")
+  type       String // "VERIFICATION" or "MEASUREMENT" (Handled via application string schemas)
   title      String
-  
+
   // Canvas View Coordinates
-  x          Float
-  y          Float
+  x Float
+  y Float
 
   // Configuration thresholds serialized as raw stringified JSON payloads
   // VERIFICATION: '{"entity_name": "Ketoprofen", "mode": "MANUAL_ENTRY"}'
   // MEASUREMENT:  '{"target_value": 500, "unit": "mg", "tolerance_positive": 5, "tolerance_negative": 5}'
-  config     String
+  config String
 
   // Relations
-  template   SopTemplate @relation(fields: [templateId], references: [templateId], onDelete: Cascade)
-  
+  template SopTemplate @relation(fields: [templateId], references: [templateId], onDelete: Cascade)
+
   // Graph Adjacency Connections
   outgoingTransitions SopTransition[] @relation("FromNode")
   incomingTransitions SopTransition[] @relation("ToNode")
@@ -53,14 +53,14 @@ model SopNode {
 }
 
 model SopTransition {
-  id         String   @id @default(uuid())
-  fromNodeId String   @map("from_node_id")
-  toNodeId   String   @map("to_node_id")
-  condition  String   @default("DEFAULT") // "DEFAULT", "RESOLVE", "RETRY", "REJECT"
+  id         String @id @default(uuid())
+  fromNodeId String @map("from_node_id")
+  toNodeId   String @map("to_node_id")
+  condition  String @default("DEFAULT") // "DEFAULT", "RESOLVE", "RETRY", "REJECT"
 
   // Explicit foreign key mappings
-  fromNode   SopNode  @relation("FromNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
-  toNode     SopNode  @relation("ToNode", fields: [toNodeId], references: [id], onDelete: Cascade)
+  fromNode SopNode @relation("FromNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode   SopNode @relation("ToNode", fields: [toNodeId], references: [id], onDelete: Cascade)
 
   @@unique([fromNodeId, toNodeId, condition])
   @@map("sop_transitions")
@@ -73,9 +73,9 @@ model SopTransition {
 model WorkflowRun {
   id           String     @id @default(uuid())
   sopId        String
-  status       String     // ACTIVE, COMPLETED
+  status       String // ACTIVE, COMPLETED
   currentState String
-  snapshotJson String     // Full XState engine serialization
+  snapshotJson String // Full XState engine serialization
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   events       RunEvent[]
@@ -86,7 +86,22 @@ model RunEvent {
   runId            String
   eventType        String
   payloadJson      String
-  validationResult String      // PASS, DEVIATION
+  validationResult String // PASS, DEVIATION
   timestamp        DateTime    @default(now())
   workflowRun      WorkflowRun @relation(fields: [runId], references: [id])
+}
+
+// =========================================================================
+// 3. INVENTORY LAYER (NFC-tagged physical item registry)
+// =========================================================================
+
+model InventoryItem {
+  id         String    @id @default(uuid())
+  nfcUid     String    @unique @map("nfc_uid")
+  name       String
+  batchNo    String?   @map("batch_no")
+  expiryDate DateTime? @map("expiry_date")
+  createdAt  DateTime  @default(now())
+
+  @@map("inventory_items")
 }
