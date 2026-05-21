@@ -1,6 +1,9 @@
 import { Controller, Get, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../persistence/prisma.service';
 
+// In-memory store for the last NFC scan — resets on server restart
+let lastScan: { uid: string; timestamp: number } | null = null;
+
 @Controller('api')
 export class InventoryController {
   constructor(private readonly prisma: PrismaService) {}
@@ -27,11 +30,19 @@ export class InventoryController {
     });
   }
 
+  @Get('hardware/last-scan')
+  getLastScan() {
+    return lastScan ?? { uid: '', timestamp: 0 };
+  }
+
   @Post('hardware/scan')
   async scanItem(@Body() body: { uid: string }) {
     if (!body.uid) {
       throw new HttpException('NFC UID is required', HttpStatus.BAD_REQUEST);
     }
+
+    // Always capture the raw UID so the registration page can poll and auto-fill
+    lastScan = { uid: body.uid.toUpperCase(), timestamp: Date.now() };
 
     const item = await this.prisma.client.inventoryItem.findUnique({
       where: { nfcUid: body.uid }
