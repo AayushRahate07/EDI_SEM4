@@ -1,6 +1,6 @@
 datasource db {
   provider = "sqlite"
-  url      = "file:./prisma/dev.db"
+  // url is configured in prisma.config.ts (Prisma v7 requirement)
 }
 
 generator client {
