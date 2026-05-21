@@ -9,8 +9,12 @@ interface NodeData {
   type: "VERIFICATION" | "MEASUREMENT";
   config: {
     expectedEntity: string;
-    targetValue: number;
-    tolerance: number;
+    mode: "BARCODE" | "MANUAL_ENTRY" | "POST_HOC_VISION";
+    targetValue?: number | string;
+    tolerance?: number | string;
+    unit: "mg" | "g" | "ml" | "C";
+    yoloClassName?: string;
+    confidenceThreshold?: number;
   };
   x: number;
   y: number;
@@ -22,6 +26,14 @@ interface Edge {
   from: string;
   to: string;
   condition?: "DEFAULT" | "RESOLVE" | "RETRY" | "REJECT" | string; // ◄ Add condition labels
+}
+
+interface ArchiveEntry {
+  id: string;
+  name: string;
+  timestamp: number;
+  nodes: NodeData[];
+  edges: Edge[];
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -54,6 +66,7 @@ function WorkflowNode({
   node,
   index,
   isSelected,
+  isConnectingFrom,
   onMouseDown,
   onPortMouseDown,
   onClick,
@@ -103,7 +116,6 @@ function WorkflowNode({
         }}
       />
 
-      {/* Node card */}
       <div
         style={{
           background: node.isAiGenerated
@@ -114,15 +126,19 @@ function WorkflowNode({
           border: `1.5px solid ${
             isSelected
               ? "#f5a623"
-              : node.isAiGenerated && !node.isManuallyConfirmed
-                ? "#f87171" // Bright red outline for unconfirmed AI nodes
-                : "#2a2f3d"
+              : isConnectingFrom
+                ? "#f5a623"
+                : node.isAiGenerated && !node.isManuallyConfirmed
+                  ? "#f87171" // Bright red outline for unconfirmed AI nodes
+                  : "#2a2f3d"
           }`,
           borderRadius: 10,
           overflow: "hidden",
           boxShadow: isSelected
             ? "0 0 0 1px #f5a623, 0 8px 32px rgba(245,166,35,.15)"
-            : "0 4px 16px rgba(0,0,0,.4)",
+            : isConnectingFrom
+              ? "0 0 8px #f5a623, 0 4px 16px rgba(0,0,0,.4)"
+              : "0 4px 16px rgba(0,0,0,.4)",
           transition:
             "border-color .15s, box-shadow .15s, background-color .15s",
         }}
@@ -223,11 +239,11 @@ function WorkflowNode({
             <div style={{ fontSize: 11, color: "#8890a8", lineHeight: 1.5 }}>
               Target:{" "}
               <span style={{ color: "#d4d8e8", fontWeight: 500 }}>
-                {node.config.targetValue}mg
+                {node.config.targetValue !== undefined && node.config.targetValue !== "" ? `${node.config.targetValue}${node.config.unit || "mg"}` : "—"}
               </span>{" "}
               ±{" "}
               <span style={{ color: "#d4d8e8", fontWeight: 500 }}>
-                {node.config.tolerance}mg
+                {node.config.tolerance !== undefined && node.config.tolerance !== "" ? `${node.config.tolerance}${node.config.unit || "mg"}` : "—"}
               </span>
             </div>
           )}
@@ -388,6 +404,19 @@ function EdgesLayer({
           </g>
         );
       })}
+
+      {connectingFrom && mousePos && (() => {
+        const from = getPortPos(connectingFrom, "out");
+        return (
+          <path
+            d={makeCubic(from.x, from.y, mousePos.x, mousePos.y)}
+            fill="none"
+            stroke="#f5a623"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+          />
+        );
+      })()}
     </svg>
   );
 }
@@ -431,8 +460,6 @@ function Sidebar({
   onSaveAndValidate,
 }: SidebarProps) {
   const [aiInput, setAiInput] = useState("");
-  const [localPrev, setLocalPrev] = useState("");
-  const [localNext, setLocalNext] = useState("");
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -490,11 +517,28 @@ function Sidebar({
     })
     .join(", ");
 
-  // 3. Sync local text buffers exclusively when the active node target switches
-  useEffect(() => {
+  const [prevId, setPrevId] = useState(node?.id);
+  const [lastPropPrev, setLastPropPrev] = useState(prevCsv);
+  const [lastPropNext, setLastPropNext] = useState(nextCsv);
+  const [localPrev, setLocalPrev] = useState(prevCsv);
+  const [localNext, setLocalNext] = useState(nextCsv);
+
+  if (node?.id !== prevId) {
+    setPrevId(node?.id);
+    setLastPropPrev(prevCsv);
+    setLastPropNext(nextCsv);
     setLocalPrev(prevCsv);
     setLocalNext(nextCsv);
-  }, [node?.id]); // ◄ Crucial boundary: ignores state typing mutations
+  } else {
+    if (prevCsv !== lastPropPrev) {
+      setLastPropPrev(prevCsv);
+      setLocalPrev(prevCsv);
+    }
+    if (nextCsv !== lastPropNext) {
+      setLastPropNext(nextCsv);
+      setLocalNext(nextCsv);
+    }
+  }
 
   return (
     <div
@@ -541,7 +585,7 @@ function Sidebar({
               e.currentTarget.style.borderColor = "#242936";
             }}
           >
-            + Verify Step
+          VERIFY
           </button>
           <button
             style={actionBtnStyle}
@@ -555,7 +599,7 @@ function Sidebar({
               e.currentTarget.style.borderColor = "#242936";
             }}
           >
-            + Measure Step
+          MEASURE
           </button>
         </div>
         <button
@@ -625,7 +669,7 @@ function Sidebar({
             >
               <input
                 type="checkbox"
-                id="confirm-ai"
+                id={`confirm-ai-${node.id}`}
                 checked={!!node.isManuallyConfirmed}
                 onChange={(e) =>
                   onUpdateStatus(
@@ -637,7 +681,7 @@ function Sidebar({
                 style={{ cursor: "pointer", width: 14, height: 14 }}
               />
               <label
-                htmlFor="confirm-ai"
+                htmlFor={`confirm-ai-${node.id}`}
                 style={{
                   fontSize: 11,
                   fontWeight: 500,
@@ -765,45 +809,138 @@ function Sidebar({
           </div>
 
           {node.type === "VERIFICATION" && (
-            <div style={sectionStyle}>
-              <label style={labelStyle}>Expected Label</label>
-              <input
-                style={inputStyle}
-                type="text"
-                placeholder="e.g. Powder Container"
-                value={node.config.expectedEntity}
-                onChange={(e) =>
-                  onUpdateConfig(node.id, "expectedEntity", e.target.value)
-                }
-              />
-            </div>
+            <>
+              <div style={sectionStyle}>
+                <label style={labelStyle}>Expected Label</label>
+                <input
+                  style={inputStyle}
+                  type="text"
+                  placeholder="e.g. Powder Container"
+                  value={node.config.expectedEntity}
+                  onChange={(e) =>
+                    onUpdateConfig(node.id, "expectedEntity", e.target.value)
+                  }
+                />
+              </div>
+              <div style={sectionStyle}>
+                <label style={labelStyle}>Verification Mode</label>
+                <select
+                  style={{
+                    background: "#161922",
+                    border: "1px solid #242936",
+                    borderRadius: 4,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    color: "#d4d8e8",
+                    outline: "none",
+                    width: "100%",
+                  }}
+                  value={node.config.mode || "MANUAL_ENTRY"}
+                  onChange={(e) =>
+                    onUpdateConfig(node.id, "mode", e.target.value)
+                  }
+                >
+                  <option value="BARCODE">Barcode Scan</option>
+                  <option value="MANUAL_ENTRY">Manual Entry</option>
+                  <option value="POST_HOC_VISION">Post-hoc Vision</option>
+                </select>
+              </div>
+
+              {node.config.mode === "POST_HOC_VISION" && (
+                <>
+                  <div style={sectionStyle}>
+                    <label style={labelStyle}>YOLO Class Label</label>
+                    <input
+                      style={inputStyle}
+                      type="text"
+                      placeholder="e.g. powder_container (optional)"
+                      value={node.config.yoloClassName || ""}
+                      onChange={(e) =>
+                        onUpdateConfig(node.id, "yoloClassName", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div style={sectionStyle}>
+                    <label style={labelStyle}>
+                      Min YOLO Confidence: {(node.config.confidenceThreshold ?? 0.8).toFixed(2)}
+                    </label>
+                    <input
+                      style={{
+                        width: "100%",
+                        cursor: "pointer",
+                      }}
+                      type="range"
+                      min="0.10"
+                      max="1.00"
+                      step="0.05"
+                      value={node.config.confidenceThreshold ?? 0.8}
+                      onChange={(e) =>
+                        onUpdateConfig(
+                          node.id,
+                          "confidenceThreshold",
+                          Number(e.target.value),
+                        )
+                      }
+                    />
+                  </div>
+                </>
+              )}
+            </>
           )}
 
           {node.type === "MEASUREMENT" && (
             <>
               <div style={sectionStyle}>
-                <label style={labelStyle}>Target Weight (mg)</label>
+                <label style={labelStyle}>Target Value</label>
                 <input
                   style={inputStyle}
                   type="number"
-                  value={node.config.targetValue}
+                  value={node.config.targetValue ?? ""}
                   onChange={(e) =>
                     onUpdateConfig(
                       node.id,
                       "targetValue",
-                      Number(e.target.value),
+                      e.target.value === "" ? "" : Number(e.target.value),
                     )
                   }
                 />
               </div>
               <div style={sectionStyle}>
-                <label style={labelStyle}>Tolerance (± mg)</label>
+                <label style={labelStyle}>Unit</label>
+                <select
+                  style={{
+                    background: "#161922",
+                    border: "1px solid #242936",
+                    borderRadius: 4,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    color: "#d4d8e8",
+                    outline: "none",
+                    width: "100%",
+                  }}
+                  value={node.config.unit || "mg"}
+                  onChange={(e) =>
+                    onUpdateConfig(node.id, "unit", e.target.value)
+                  }
+                >
+                  <option value="mg">mg</option>
+                  <option value="g">g</option>
+                  <option value="ml">ml</option>
+                  <option value="C">C</option>
+                </select>
+              </div>
+              <div style={sectionStyle}>
+                <label style={labelStyle}>Tolerance (±)</label>
                 <input
                   style={inputStyle}
                   type="number"
-                  value={node.config.tolerance}
+                  value={node.config.tolerance ?? ""}
                   onChange={(e) =>
-                    onUpdateConfig(node.id, "tolerance", Number(e.target.value))
+                    onUpdateConfig(
+                      node.id,
+                      "tolerance",
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
                   }
                 />
               </div>
@@ -838,14 +975,14 @@ function Sidebar({
       >
         <div
           style={{
-            fontSize: 10,
-            fontWeight: 600,
+            fontSize: 12,
+            fontWeight: 400,
             color: "#3b82f6",
             marginBottom: 6,
             letterSpacing: ".02em",
           }}
         >
-          ✦ SOP Document Ingestion
+          SOP Document Ingestion
         </div>
 
         <label
@@ -862,8 +999,8 @@ function Sidebar({
             marginBottom: 6,
           }}
         >
-          <span style={{ fontSize: 11 }}>📄</span>
-          <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 13, color: "#9ca3af" }}>description</span>
+          <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>
             Upload Document
           </span>
           <input
@@ -916,7 +1053,7 @@ function Sidebar({
             padding: "5px 0",
             borderRadius: 4,
             fontSize: 11,
-            fontWeight: 600,
+            fontWeight: 400,
             cursor: "pointer",
           }}
         >
@@ -938,48 +1075,72 @@ function ValidationBanner({ errors, onDismiss }: ValidationBannerProps) {
   return (
     <div
       style={{
-        position: "absolute",
-        top: 14,
-        left: "50%",
-        transform: "translateX(-50%)",
-        background: "#1e1018",
-        border: "1px solid #6b2230",
-        color: "#f87171",
-        fontSize: 12,
-        padding: "10px 16px",
-        borderRadius: 10,
-        zIndex: 100,
-        maxWidth: 400,
-        fontFamily: "'DM Sans', sans-serif",
-        boxShadow: "0 8px 24px rgba(0,0,0,.5)",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100vw",
+        height: "100vh",
+        background: "rgba(7, 9, 12, 0.75)",
+        backdropFilter: "blur(6px)",
         display: "flex",
-        gap: 10,
-        alignItems: "flex-start",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
       }}
     >
-      <span style={{ fontSize: 14, flexShrink: 0 }}>⚠</span>
-      <div style={{ flex: 1 }}>
-        {errors.map((err, i) => (
-          <div key={i} style={{ lineHeight: 1.6 }}>
-            {err}
-          </div>
-        ))}
-      </div>
-      <button
-        onClick={onDismiss}
+      <div
         style={{
-          background: "none",
-          border: "none",
-          color: "#6b2230",
-          cursor: "pointer",
-          fontSize: 16,
-          lineHeight: 1,
-          flexShrink: 0,
-          padding: 0,
+          background: "rgba(30, 16, 24, 0.95)",
+          border: "1px solid #6b2230",
+          color: "#fca5a5",
+          fontSize: 12,
+          padding: "24px 32px",
+          borderRadius: 12,
+          maxWidth: 480,
+          width: "90%",
+          fontFamily: "'DM Sans', sans-serif",
+          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(107, 34, 48, 0.2)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
         }}
       >
-        ✕
-      </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid rgba(107, 34, 48, 0.3)", paddingBottom: 12 }}>
+          <span style={{ fontSize: 18, color: "#ef4444" }}>⚠</span>
+          <span style={{ fontSize: 13, fontWeight: 400, color: "#fca5a5", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Workflow Validation Errors
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "250px", overflowY: "auto" }}>
+          {errors.map((err, i) => (
+            <div key={i} style={{ lineHeight: 1.6, display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ color: "#ef4444", flexShrink: 0 }}>•</span>
+              <span style={{ flex: 1, fontWeight: 400 }}>{err}</span>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={onDismiss}
+          style={{
+            alignSelf: "flex-end",
+            background: "rgba(107, 34, 48, 0.25)",
+            border: "1px solid #6b2230",
+            color: "#fca5a5",
+            cursor: "pointer",
+            fontSize: 11,
+            padding: "8px 20px",
+            borderRadius: 6,
+            fontWeight: 400,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            outline: "none",
+          }}
+          className="error-dismiss-btn"
+        >
+          Dismiss
+        </button>
+      </div>
     </div>
   );
 }
@@ -988,24 +1149,6 @@ function ValidationBanner({ errors, onDismiss }: ValidationBannerProps) {
 
 export default function SopBuilder() {
   const [nodes, setNodes] = useState<NodeData[]>([]);
-
-  const handleSopFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const textContent = event.target?.result;
-      if (typeof textContent === "string") {
-        // Feed the plain text content directly into your existing generator pipeline
-        injectAiParsedNodes(textContent);
-      }
-    };
-    reader.readAsText(file);
-
-    // Clear input value so the same file can be uploaded again if edited
-    e.target.value = "";
-  };
 
   const [edges, setEdges] = useState<Edge[]>([]);
 
@@ -1021,6 +1164,13 @@ export default function SopBuilder() {
   );
   const [toast, setToast] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Archives and Naming/Deploying States
+  const [archives, setArchives] = useState<ArchiveEntry[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showArchivesList, setShowArchivesList] = useState(false);
+  const [tempSaveName, setTempSaveName] = useState("");
+  const [deployToast, setDeployToast] = useState<string | null>(null);
 
   // Canvas pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1047,16 +1197,19 @@ export default function SopBuilder() {
       e.stopPropagation();
 
       const node = nodes.find((n) => n.id === id)!;
+      const inner = innerRef.current;
+      if (!inner) return;
+      const rect = inner.getBoundingClientRect();
 
-      // Lock offsets directly to the cursor's screen position
+      // Lock offsets relative to the inner container
       setDragging({
         id,
-        ox: e.clientX - node.x,
-        oy: e.clientY - node.y,
+        ox: e.clientX - rect.left - node.x,
+        oy: e.clientY - rect.top - node.y,
       });
       setSelectedId(id);
     },
-    [nodes],
+    [nodes, setDragging, setSelectedId],
   );
 
   const onPortMouseDown = useCallback(
@@ -1067,46 +1220,7 @@ export default function SopBuilder() {
     [],
   );
 
-  // Canvas pan on middle-button or empty space drag
-  const onCanvasMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      // 1. If background canvas is panning, run your native pan calculations
-      if (isPanning.current) {
-        const dx = e.clientX - panStart.current.x;
-        const dy = e.clientY - panStart.current.y;
-        setPan({ x: panStart.current.px + dx, y: panStart.current.py + dy });
-        return;
-      }
-
-      // 2. If an actual node card is being dragged across the screen
-      if (dragging) {
-        const SIDEBAR_PANEL_WIDTH = 292; // Match your new broader sidebar layout width
-        const currentWindowWidth = window.innerWidth;
-
-        // Calculate where the cursor wants to place the node card using your ox/oy offsets
-        let proposedX = e.clientX - dragging.ox;
-        let proposedY = e.clientY - dragging.oy;
-
-        // Strict Right Boundary Clamp: Keep it completely in front of the sidebar
-        if (proposedX + NODE_WIDTH > currentWindowWidth - SIDEBAR_PANEL_WIDTH) {
-          proposedX =
-            currentWindowWidth - SIDEBAR_PANEL_WIDTH - NODE_WIDTH - 16;
-        }
-
-        // Left, Top, and Bottom Padding Boundary Clamps to prevent flying off-screen
-        if (proposedX < 16) proposedX = 16;
-        if (proposedY < 16) proposedY = 16;
-
-        // Commit coordinates instantly to layout tree state arrays using dragging.id
-        setNodes((currentNodes) =>
-          currentNodes.map((n) =>
-            n.id === dragging.id ? { ...n, x: proposedX, y: proposedY } : n,
-          ),
-        );
-      }
-    },
-    [dragging],
-  );
+  // Canvas pan on middle-button or empty space drag is handled globally in useEffect
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1126,20 +1240,26 @@ export default function SopBuilder() {
       if (dragging) {
         const SIDEBAR_PANEL_WIDTH = 292;
         const currentWindowWidth = window.innerWidth;
+        const canvas = canvasRef.current;
+        const scrollLeft = canvas ? canvas.scrollLeft : 0;
+        const scrollTop = canvas ? canvas.scrollTop : 0;
 
-        // Clean, unwarped screen-space delta calculation
-        let proposedX = e.clientX - dragging.ox;
-        let proposedY = e.clientY - dragging.oy;
+        // Clean dragging calculation relative to the inner canvas container
+        let proposedX = mx - dragging.ox;
+        let proposedY = my - dragging.oy;
 
-        // Strict Right Boundary Clamp
-        if (proposedX + NODE_WIDTH > currentWindowWidth - SIDEBAR_PANEL_WIDTH) {
-          proposedX =
-            currentWindowWidth - SIDEBAR_PANEL_WIDTH - NODE_WIDTH - 16;
+        // Strict Right Boundary Clamp (viewport-aware in content space)
+        const maxAllowedX = scrollLeft + currentWindowWidth - SIDEBAR_PANEL_WIDTH - NODE_WIDTH - 16;
+        if (proposedX > maxAllowedX) {
+          proposedX = maxAllowedX;
         }
 
-        // Left and Top Boundary Clamps
-        if (proposedX < 16) proposedX = 16;
-        if (proposedY < 16) proposedY = 16;
+        // Left and Top Boundary Clamps (viewport-aware in content space)
+        const minAllowedX = scrollLeft + 16;
+        if (proposedX < minAllowedX) proposedX = minAllowedX;
+
+        const minAllowedY = scrollTop + 16;
+        if (proposedY < minAllowedY) proposedY = minAllowedY;
 
         setNodes((prevNodes) =>
           prevNodes.map((n) =>
@@ -1193,7 +1313,20 @@ export default function SopBuilder() {
         behavior: "smooth",
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes.length]); // only fire when node count changes
+
+  // ── Load Archives on Mount ───────────────────────────────────────────────
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("sop_workflow_archives");
+      if (stored) {
+        setArchives(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Failed to load local archives:", e);
+    }
+  }, []);
 
   // ── Nodes ─────────────────────────────────────────────────────────────────
 
@@ -1206,12 +1339,18 @@ export default function SopBuilder() {
       id: newId,
       title: type === "VERIFICATION" ? "New Verification" : "New Measurement",
       type,
-      config: { expectedEntity: "", targetValue: 100, tolerance: 2 },
+      config: {
+        expectedEntity: "",
+        mode: "MANUAL_ENTRY",
+        targetValue: undefined,
+        tolerance: undefined,
+        unit: "mg",
+      },
       x,
       y,
     };
     setNodes((prev) => [...prev, newNode]);
-    if (last && !edges.find((e) => e.from === last.id)) {
+    if (last) {
       setEdges((prev) => [...prev, { from: last.id, to: newId }]);
     }
     setSelectedId(newId);
@@ -1226,12 +1365,14 @@ export default function SopBuilder() {
       title: string;
       config: {
         expectedEntity: string;
-        targetValue: number;
-        tolerance: number;
+        mode: "BARCODE" | "MANUAL_ENTRY" | "POST_HOC_VISION";
+        targetValue?: number | string;
+        tolerance?: number | string;
+        unit: "mg" | "g" | "ml" | "C";
       };
     }> = [];
 
-    stepBlocks.forEach((block, index) => {
+    stepBlocks.forEach((block) => {
       const trimmedBlock = block.trim();
       if (!trimmedBlock) return;
 
@@ -1251,26 +1392,38 @@ export default function SopBuilder() {
             expectedEntity: entityMatch
               ? entityMatch[1].trim()
               : "Parsed Label Asset",
-            targetValue: 0,
-            tolerance: 0,
+            mode: "MANUAL_ENTRY",
+            targetValue: undefined,
+            tolerance: undefined,
+            unit: "mg",
           },
         });
       }
       // --- Heuristic B: Look for Measurements ---
       else if (/weigh|measure|mg|g|mL|\d+/i.test(trimmedBlock)) {
         // Extract the metric number (e.g., 400mg, 10mL)
-        const valueMatch = trimmedBlock.match(/(\d+)\s*(?:mg|g|mL|ml)/i);
+        const valueMatch = trimmedBlock.match(/(\d+)\s*(?:mg|g|mL|ml|C)/i);
         const toleranceMatch = trimmedBlock.match(
           /(?:tolerance|margin|±)\s*(?:of\s*)?(\d+)/i,
         );
+        const unitMatch = trimmedBlock.match(/(mg|g|ml|mL|C)/i);
+        let unit: "mg" | "g" | "ml" | "C" = "mg";
+        if (unitMatch) {
+          const u = unitMatch[1].toLowerCase();
+          if (u === "ml") unit = "ml";
+          else if (u === "g") unit = "g";
+          else if (u === "c") unit = "C";
+        }
 
         stepsToInject.push({
           type: "MEASUREMENT",
           title: trimmedBlock.split(/[.\n]/)[0].substring(0, 30) + "...", // Dynamic short title snippet
           config: {
             expectedEntity: "",
-            targetValue: valueMatch ? Number(valueMatch[1]) : 100,
-            tolerance: toleranceMatch ? Number(toleranceMatch[1]) : 2,
+            mode: "MANUAL_ENTRY",
+            targetValue: valueMatch ? Number(valueMatch[1]) : undefined,
+            tolerance: toleranceMatch ? Number(toleranceMatch[1]) : undefined,
+            unit,
           },
         });
       }
@@ -1286,12 +1439,12 @@ export default function SopBuilder() {
     const newEdges: Edge[] = [];
 
     const tailNode = nodes[nodes.length - 1];
-    let lastX = tailNode ? tailNode.x : 160;
+    const lastX = tailNode ? tailNode.x : 160;
     let lastY = tailNode ? tailNode.y : 80;
     let precedingNodeId = tailNode ? tailNode.id : null;
 
-    stepsToInject.forEach((parsedStep, index) => {
-      const generatedId = `step_ai_${index}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    stepsToInject.forEach((parsedStep) => {
+      const generatedId = uid();
       lastY += 200; // Drop down cleanly below the preceding node position
 
       const newNode: NodeData = {
@@ -1324,7 +1477,7 @@ export default function SopBuilder() {
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
     setSelectedId((s) => (s === id ? null : s));
-  }, []);
+  }, [setNodes, setEdges, setSelectedId]);
 
   const updateTitle = (id: string, val: string) =>
     setNodes((prev) =>
@@ -1443,22 +1596,50 @@ export default function SopBuilder() {
       );
     }
 
+    // 4. Validate that measurement nodes have all configurations completed (target and tolerance)
+    nodes.forEach((node) => {
+      if (node.type === "MEASUREMENT") {
+        if (node.config.targetValue === undefined || node.config.targetValue === "") {
+          errors.push(`Measurement step "${node.title}" must specify a target value.`);
+        }
+        if (node.config.tolerance === undefined || node.config.tolerance === "") {
+          errors.push(`Measurement step "${node.title}" must specify a tolerance.`);
+        }
+      }
+    });
+
     return errors;
   };
 
-  const compile = async () => {
+  const compile = async (customName?: string): Promise<boolean> => {
     const errs = validate();
     if (errs.length) {
       setValidationErrors(errs);
-      return;
+      return false;
     }
     setValidationErrors([]);
 
+    const slugify = (text: string) => {
+      return text
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/[^\w\-]+/g, "")
+        .replace(/\-\-+/g, "-")
+        .replace(/^-+/, "")
+        .replace(/-+$/, "");
+    };
+
+    const templateId = customName && customName.trim() !== ""
+      ? `SOP-${slugify(customName)}`
+      : `SOP-${Date.now()}`;
+
     // 1. Serialize the component state into the verified JSON structure
     const sopPayload = {
-      template_id: `SOP-${Date.now()}`,
+      template_id: templateId,
       version: "1.0.0",
-      start_node_id: nodes[0]?.id || null,
+      start_node_id: nodes[0]?.id || "",
       nodes: nodes.map((n) => {
         const outgoingEdges = edges.filter((e) => e.from === n.id);
 
@@ -1466,17 +1647,23 @@ export default function SopBuilder() {
           id: n.id,
           type: n.type,
           title: n.title,
+          x: n.x,
+          y: n.y,
           config:
             n.type === "VERIFICATION"
-              ? { verified_entity: n.config.expectedEntity || null }
+              ? {
+                  entity_name: n.config.expectedEntity || "",
+                  mode: n.config.mode || "MANUAL_ENTRY",
+                  confidence_threshold: n.config.confidenceThreshold !== undefined ? Number(n.config.confidenceThreshold) : undefined,
+                  yolo_class_name: n.config.yoloClassName || undefined,
+                }
               : {
-                  target_value: n.config.targetValue,
-                  tolerance: n.config.tolerance,
+                  target_value: n.config.targetValue !== undefined && n.config.targetValue !== "" ? Number(n.config.targetValue) : 0,
+                  unit: n.config.unit || "mg",
+                  tolerance_positive: n.config.tolerance !== undefined && n.config.tolerance !== "" ? Number(n.config.tolerance) : 0,
+                  tolerance_negative: n.config.tolerance !== undefined && n.config.tolerance !== "" ? Number(n.config.tolerance) : 0,
                 },
-          transitions: outgoingEdges.map((e) => ({
-            target_node_id: e.to,
-            condition: e.condition || "DEFAULT",
-          })),
+          next_nodes: outgoingEdges.map((e) => e.to),
         };
       }),
     };
@@ -1505,12 +1692,62 @@ export default function SopBuilder() {
       // Trigger UI success notification on successful save
       setToast(true);
       setTimeout(() => setToast(false), 2500);
+      return true;
     } catch (error) {
       console.error("HTTP Transmission Error to NestJS:", error);
       setValidationErrors([
         "Failed to save SOP configuration to the backend server. Connection refused.",
       ]);
+      // Note: We still return true here so the local archives save succeeds even if backend connection fails (e.g. server offline during testing)
+      return true;
     }
+  };
+
+  // ── Archives & Deployment Operations ──────────────────────────────────────
+  const saveToArchives = async (name: string) => {
+    if (!name.trim()) return;
+    const success = await compile(name);
+    if (!success) return; // Validation failed, errors already set
+
+    const newEntry: ArchiveEntry = {
+      id: `archive_${Date.now()}`,
+      name: name.trim(),
+      timestamp: Date.now(),
+      nodes,
+      edges,
+    };
+
+    const updated = [newEntry, ...archives];
+    setArchives(updated);
+    try {
+      localStorage.setItem("sop_workflow_archives", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save to localStorage:", e);
+    }
+    setShowSaveModal(false);
+    setTempSaveName("");
+  };
+
+  const loadFromArchive = (archive: ArchiveEntry) => {
+    setNodes(archive.nodes);
+    setEdges(archive.edges);
+    setSelectedId(null);
+    setShowArchivesList(false);
+  };
+
+  const deleteFromArchive = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = archives.filter((a) => a.id !== id);
+    setArchives(updated);
+    try {
+      localStorage.setItem("sop_workflow_archives", JSON.stringify(updated));
+    } catch (err) {
+      console.error("Failed to delete from localStorage:", err);
+    }
+  };
+
+  const deployToYolo = () => {
+    // Future scope: No pop-up/validation or backend action triggered on click, as requested.
   };
 
   const selectedNode = nodes.find((n) => n.id === selectedId);
@@ -1521,6 +1758,7 @@ export default function SopBuilder() {
     <div
       style={{
         display: "flex",
+        flexDirection: "column",
         height: "100vh",
         width: "100%",
         fontFamily: "'DM Sans', sans-serif",
@@ -1530,162 +1768,549 @@ export default function SopBuilder() {
     >
       {/* Google Fonts */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
         * { box-sizing: border-box; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
-        input:focus { border-color: #f5a623 !important; }
+        input:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2a2f3d; border-radius: 2px; }
+
+        /* Premium Top Bar HUD Buttons */
+        .topbar-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 400;
+          font-family: 'DM Sans', sans-serif;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          outline: none;
+          position: relative;
+          user-select: none;
+        }
+
+        .btn-archives {
+          background: rgba(22, 25, 34, 0.45);
+          border: 1px solid rgba(212, 216, 232, 0.1);
+          color: #a3a8be;
+        }
+        .btn-archives:hover {
+          background: rgba(43, 49, 66, 0.95);
+          border-color: rgba(212, 216, 232, 0.45);
+          color: #ffffff;
+        }
+
+        .btn-save {
+          background: rgba(99, 102, 241, 0.05);
+          border: 1px solid rgba(99, 102, 241, 0.25);
+          color: #a5b4fc;
+        }
+        .btn-save:hover {
+          background: rgba(99, 102, 241, 0.85);
+          border-color: rgba(129, 140, 248, 0.9);
+          color: #ffffff;
+        }
+
+        .btn-deploy {
+          background: rgba(16, 185, 129, 0.05);
+          border: 1px solid rgba(16, 185, 129, 0.35);
+          color: #34d399;
+        }
+        .btn-deploy:hover {
+          background: rgba(16, 185, 129, 0.8);
+          border-color: rgba(52, 211, 153, 0.85);
+          color: #ffffff;
+        }
+
+        /* Material Symbols Outlined Custom styles */
+        .material-symbols-outlined {
+          font-size: 16px;
+          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+          display: inline-block;
+          vertical-align: middle;
+          line-height: 1;
+        }
+
+        .error-dismiss-btn:hover {
+          background: rgba(107, 34, 48, 0.5) !important;
+          border-color: #fca5a5 !important;
+          color: #ffffff !important;
+        }
       `}</style>
 
-      {/* Canvas — scrollable so nodes at bottom are always reachable */}
-      {/* Canvas Viewport Container Box */}
+      {/* Top Bar Header */}
       <div
-        ref={canvasRef}
         style={{
-          flex: 1,
-          position: "relative",
-          overflow: "auto",
-          background: "#0d0f14",
+          height: 60,
+          background: "#07090c",
+          borderBottom: "1px solid #1f2430",
+          padding: "0 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          zIndex: 100,
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
         }}
-        onMouseMove={onCanvasMouseMove}
-        onMouseDown={(e) => {
-          // Initialize canvas background panning only when clicking on raw empty space
-          if (e.target === canvasRef.current || e.target === innerRef.current) {
-            e.preventDefault();
-            isPanning.current = true;
-            panStart.current = {
-              x: e.clientX,
-              y: e.clientY,
-              px: pan.x,
-              py: pan.y,
-            };
-            setSelectedId(null);
-          }
-        }}
-        onClick={() => setSelectedId(null)}
       >
-        {/* Inner layer that grows with content and holds dots bg */}
+        {/* Left - Heading exact same form! */}
         <div
-          ref={innerRef}
           style={{
-            position: "relative",
-            width: canvasSize.width,
-            height: canvasSize.height,
-            backgroundImage:
-              "radial-gradient(circle, #1e2235 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
+            fontFamily: "monospace",
+            fontSize: 20,
+            color: "#565d75",
+            letterSpacing: ".06em",
+            fontWeight: 400,
+            textShadow: "0 0 10px rgba(86, 93, 117, 0.2)",
           }}
         >
-          {/* Canvas label */}
-          <div
-            style={{
-              position: "absolute",
-              top: 16,
-              left: 20,
-              fontFamily: "monospace",
-              fontSize: 20,
-              color: "#565d75",
-              letterSpacing: ".06em",
-              pointerEvents: "none",
-            }}
+          SOP WORKFLOW CANVAS
+        </div>
+
+        {/* Right - Control actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            onClick={() => setShowArchivesList(true)}
+            className="topbar-btn btn-archives"
           >
-            SOP WORKFLOW CANVAS
-          </div>
+            <span className="material-symbols-outlined">folder_open</span>
+            <span>Archives ({archives.length})</span>
+          </button>
 
-          {/* Validation banner */}
-          <ValidationBanner
-            errors={validationErrors}
-            onDismiss={() => setValidationErrors([])}
-          />
-          {/* Edges SVG */}
-          <EdgesLayer
-            nodes={nodes}
-            edges={edges}
-            selectedId={selectedId}
-            connectingFrom={connectingFrom}
-            mousePos={mousePos}
-            canvasSize={canvasSize}
-          />
-
-          {/* Nodes */}
-          {nodes.map((n, i) => (
-            <WorkflowNode
-              key={n.id}
-              node={n}
-              index={i}
-              isSelected={selectedId === n.id}
-              isConnectingFrom={connectingFrom === n.id}
-              onMouseDown={onNodeMouseDown}
-              onPortMouseDown={onPortMouseDown}
-              onClick={setSelectedId}
-              onContextMenu={deleteNode}
-            />
-          ))}
-
-          {/* Toast */}
-          <div
-            style={{
-              position: "fixed",
-              bottom: 80,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#1a1e2a",
-              border: "1px solid #1a4a38",
-              color: "#2dd4a0",
-              fontSize: 12,
-              padding: "8px 16px",
-              borderRadius: 8,
-              opacity: toast ? 1 : 0,
-              transition: "opacity .3s",
-              pointerEvents: "none",
-              whiteSpace: "nowrap",
-              fontFamily: "'IBM Plex Mono', monospace",
-              zIndex: 200,
+          <button
+            onClick={() => {
+              setTempSaveName(`SOP-Template-${archives.length + 1}`);
+              setShowSaveModal(true);
             }}
+            className="topbar-btn btn-save"
           >
-            ✓ Template compiled — check console
-          </div>
+            <span className="material-symbols-outlined">save</span>
+            <span>Save Template</span>
+          </button>
+
+          <button
+            onClick={deployToYolo}
+            className="topbar-btn btn-deploy"
+          >
+            <span className="material-symbols-outlined">bolt</span>
+            <span>Deploy Compliance</span>
+          </button>
         </div>
       </div>
 
-      {/* Sidebar */}
-      {/* Find this right at the bottom edge of your main return layout render */}
-      <Sidebar
-        node={selectedNode}
-        allNodes={nodes}
-        edges={edges}
-        setEdges={setEdges}
-        onUpdateTitle={updateTitle}
-        onUpdateConfig={updateConfig}
-        onUpdateStatus={updateStatus}
-        onUpdateSequenceCsv={updateSequenceCsv}
-        onInjectAiNodes={injectAiParsedNodes}
-        onAddManualNode={(type) => {
-          // Simple callback to handle manual node additions on click
-          const newId = `step_manual_${Date.now()}`;
-          const tailNode = nodes[nodes.length - 1];
-          setNodes((prev) => [
-            ...prev,
-            {
-              id: newId,
-              title:
-                type === "VERIFICATION"
-                  ? "Manual Verification"
-                  : "Manual Measurement",
-              type: type,
-              config: { expectedEntity: "", targetValue: 0, tolerance: 0 },
-              x: tailNode ? tailNode.x : 100,
-              y: tailNode ? tailNode.y + 180 : 100,
-              isAiGenerated: false,
-            },
-          ]);
-        }}
-        onSaveAndValidate={() => {
-          compile();
-        }}
+      {/* Main Workspace Split View */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
+        {/* Canvas — scrollable so nodes at bottom are always reachable */}
+        {/* Canvas Viewport Container Box */}
+        <div
+          ref={canvasRef}
+          style={{
+            flex: 1,
+            position: "relative",
+            overflow: "auto",
+            background: "#0d0f14",
+          }}
+          onMouseDown={(e) => {
+            // Initialize canvas background panning only when clicking on raw empty space
+            if (e.target === canvasRef.current || e.target === innerRef.current) {
+              e.preventDefault();
+              isPanning.current = true;
+              panStart.current = {
+                x: e.clientX,
+                y: e.clientY,
+                px: pan.x,
+                py: pan.y,
+              };
+              setSelectedId(null);
+            }
+          }}
+          onClick={() => setSelectedId(null)}
+        >
+          {/* Inner layer that grows with content and holds dots bg */}
+          <div
+            ref={innerRef}
+            style={{
+              position: "relative",
+              width: canvasSize.width,
+              height: canvasSize.height,
+              backgroundImage:
+                "radial-gradient(circle, #1e2235 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }}
+          >
+            {/* Edges SVG */}
+            <EdgesLayer
+              nodes={nodes}
+              edges={edges}
+              selectedId={selectedId}
+              connectingFrom={connectingFrom}
+              mousePos={mousePos}
+              canvasSize={canvasSize}
+            />
+
+            {/* Nodes */}
+            {nodes.map((n, i) => (
+              <WorkflowNode
+                key={n.id}
+                node={n}
+                index={i}
+                isSelected={selectedId === n.id}
+                isConnectingFrom={connectingFrom === n.id}
+                onMouseDown={onNodeMouseDown}
+                onPortMouseDown={onPortMouseDown}
+                onClick={setSelectedId}
+                onContextMenu={deleteNode}
+              />
+            ))}
+
+            {/* Toast */}
+            <div
+              style={{
+                position: "fixed",
+                bottom: 80,
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: "#1a1e2a",
+                border: "1px solid #1a4a38",
+                color: "#2dd4a0",
+                fontSize: 12,
+                padding: "8px 16px",
+                borderRadius: 8,
+                opacity: toast ? 1 : 0,
+                transition: "opacity .3s",
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+                fontFamily: "'IBM Plex Mono', monospace",
+                zIndex: 200,
+              }}
+            >
+              Template compiled — check console
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <Sidebar
+          node={selectedNode}
+          allNodes={nodes}
+          edges={edges}
+          setEdges={setEdges}
+          onUpdateTitle={updateTitle}
+          onUpdateConfig={updateConfig}
+          onUpdateStatus={updateStatus}
+          onUpdateSequenceCsv={updateSequenceCsv}
+          onInjectAiNodes={injectAiParsedNodes}
+          onAddManualNode={addNode}
+          onSaveAndValidate={() => {
+            setTempSaveName(`SOP-Template-${archives.length + 1}`);
+            setShowSaveModal(true);
+          }}
+        />
+      </div>
+
+      {/* Save Modal */}
+      {showSaveModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 500,
+          }}
+        >
+          <div
+            style={{
+              background: "#07090c",
+              border: "1px solid #242936",
+              borderRadius: 12,
+              padding: 24,
+              width: 400,
+              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.6)",
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >
+            <h3
+              style={{
+                marginTop: 0,
+                fontSize: 16,
+                color: "#d4d8e8",
+                fontWeight: 400,
+                fontFamily: "monospace",
+                letterSpacing: ".05em",
+                borderBottom: "1px solid #1a202c",
+                paddingBottom: 12,
+              }}
+            >
+              SAVE SOP WORKFLOW TEMPLATE
+            </h3>
+            <p style={{ fontSize: 12, color: "#8890a8", margin: "12px 0 6px 0" }}>
+              Enter a name for this active canvas workflow:
+            </p>
+            <input
+              type="text"
+              value={tempSaveName}
+              onChange={(e) => setTempSaveName(e.target.value)}
+              placeholder="e.g. Chemical Mixing Routine"
+              style={{
+                width: "100%",
+                background: "#161922",
+                border: "1px solid #242936",
+                borderRadius: 6,
+                padding: "10px 12px",
+                fontSize: 13,
+                color: "#d4d8e8",
+                outline: "none",
+                marginBottom: 20,
+              }}
+              autoFocus
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#565d75",
+                  fontSize: 12,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  cursor: "pointer",
+                  padding: "8px 12px",
+                }}
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={() => saveToArchives(tempSaveName)}
+                disabled={!tempSaveName.trim()}
+                style={{
+                  background: "linear-gradient(135deg, #4f46e5 0%, #2563eb 100%)",
+                  border: "none",
+                  borderRadius: 6,
+                  color: "#ffffff",
+                  fontSize: 12,
+                  fontWeight: 400,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  padding: "8px 20px",
+                  cursor: tempSaveName.trim() ? "pointer" : "not-allowed",
+                  opacity: tempSaveName.trim() ? 1 : 0.5,
+                  boxShadow: "0 0 10px rgba(99, 102, 241, 0.3)",
+                }}
+              >
+                SAVE & VERIFY
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archives Overlay Drawer */}
+      {showArchivesList && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 500,
+          }}
+          onClick={() => setShowArchivesList(false)}
+        >
+          <div
+            style={{
+              background: "#07090c",
+              border: "1px solid #242936",
+              borderRadius: 16,
+              padding: 28,
+              width: 550,
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.7)",
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: "1px solid #1a202c",
+                paddingBottom: 16,
+                marginBottom: 20,
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: 16,
+                  color: "#d4d8e8",
+                  fontWeight: 400,
+                  fontFamily: "monospace",
+                  letterSpacing: ".05em",
+                }}
+              >
+                SAVED SOP ARCHIVES
+              </h3>
+              <button
+                onClick={() => setShowArchivesList(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#565d75",
+                  fontSize: 18,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                paddingRight: 6,
+              }}
+            >
+              {archives.length === 0 ? (
+                <div
+                  style={{
+                    padding: "40px 0",
+                    textAlign: "center",
+                    color: "#565d75",
+                    fontSize: 13,
+                    fontStyle: "italic",
+                  }}
+                >
+                  No archived workflows found. Click "Save Template" to store one!
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {archives.map((archive) => {
+                    const date = new Date(archive.timestamp).toLocaleString();
+                    const measureCount = archive.nodes.filter((n) => n.type === "MEASUREMENT").length;
+                    const verifyCount = archive.nodes.filter((n) => n.type === "VERIFICATION").length;
+
+                    return (
+                      <div
+                        key={archive.id}
+                        onClick={() => loadFromArchive(archive)}
+                        style={{
+                          background: "#11141d",
+                          border: "1px solid #1d2230",
+                          borderRadius: 8,
+                          padding: "16px 20px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 400,
+                              color: "#adc6ff",
+                            }}
+                          >
+                            {archive.name}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "#565d75" }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 12, marginRight: -4, verticalAlign: "middle" }}>calendar_today</span>
+                            <span>{date}</span>
+                            <span>•</span>
+                            <span style={{ color: "#34d399", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: "middle" }}>check_circle</span>
+                              <span>{verifyCount} Verify</span>
+                            </span>
+                            <span style={{ color: "#818cf8", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: "middle" }}>straighten</span>
+                              <span>{measureCount} Measure</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <button
+                            onClick={(e) => deleteFromArchive(archive.id, e)}
+                            style={{
+                              background: "rgba(239, 68, 68, 0.1)",
+                              border: "1px solid rgba(239, 68, 68, 0.2)",
+                              color: "#f87171",
+                              borderRadius: 4,
+                              fontSize: 10,
+                              fontFamily: "'IBM Plex Mono', monospace",
+                              padding: "6px 12px",
+                              cursor: "pointer",
+                              transition: "all 0.2s ease",
+                            }}
+                          >
+                            DELETE
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YOLO Deploy Toast */}
+      {deployToast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 40,
+            right: 40,
+            background: "rgba(7, 9, 12, 0.95)",
+            backdropFilter: "blur(10px)",
+            border: "1px solid #10b981",
+            color: "#d4d8e8",
+            fontSize: 12,
+            padding: "16px 24px",
+            borderRadius: 8,
+            boxShadow: "0 10px 30px rgba(16, 185, 129, 0.35)",
+            zIndex: 600,
+            maxWidth: 400,
+            fontFamily: "'IBM Plex Mono', monospace",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ color: "#34d399", fontWeight: 400 }}>✓ COMPLIANCE SYSTEM READY</span>
+            <span>{deployToast}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Screen-Centered Global Validation Banner */}
+      <ValidationBanner
+        errors={validationErrors}
+        onDismiss={() => setValidationErrors([])}
       />
     </div>
   );

@@ -1,13 +1,16 @@
 // src/api/workflow.controller.ts
-import { Controller, Post, Get, Body, Param, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, NotFoundException, ConflictException } from '@nestjs/common';
 import { RunRepository } from '../persistence/run.repository';
 import { PrismaService } from '../persistence/prisma.service';
 import { createActor } from 'xstate';
 import { compileDagToMachine } from '../engine/workflow.compiler';
 import { SopDagSchema, SopDag } from '../schemas/sop.schema';
+import { randomUUID } from 'crypto';
 
 @Controller('runs')
 export class WorkflowController {
+  // NOTE: PrismaService and RunRepository are provided by the @Global() PersistenceModule,
+  // which makes them available globally across all controllers and modules in AppModule.
   constructor(
     private runRepo: RunRepository,
     private prisma: PrismaService
@@ -53,21 +56,31 @@ export class WorkflowController {
   }
 
   @Post()
-  async startRun(@Body() body: { sopId: string; runId: string }) {
+  async startRun(@Body() body: { sopId: string; runId?: string }) {
+    const runId = body.runId || randomUUID();
+
+    // Check for runId uniqueness and prevent Prisma unique constraint crashes
+    const existing = await this.prisma.client.workflowRun.findUnique({
+      where: { id: runId }
+    });
+    if (existing) {
+      throw new ConflictException(`Workflow run instance with ID "${runId}" already exists.`);
+    }
+
     const validatedDag = await this.fetchAndBuildTemplatePayload(body.sopId);
     
-    const machine = compileDagToMachine(validatedDag, body.runId);
+    const machine = compileDagToMachine(validatedDag, runId);
     const actor = createActor(machine).start();
 
     await this.runRepo.initializeRun(
-      body.runId,
+      runId,
       body.sopId,
       validatedDag.start_node_id,
       JSON.stringify(actor.getSnapshot())
     );
 
     return {
-      run_id: body.runId,
+      run_id: runId,
       status: "ACTIVE",
       current_step: validatedDag.start_node_id
     };
@@ -84,7 +97,7 @@ export class WorkflowController {
     const actor = await this.runRepo.rehydrateActor(id, validatedDag);
     const oldSnapshot = actor.getSnapshot();
 
-    actor.send({ type: 'EXECUTE_STEP', payload: eventPayload.payload });
+    actor.send({ type: eventPayload.type, payload: eventPayload.payload });
     const newSnapshot = actor.getSnapshot();
 
     const deviationTriggered = newSnapshot.context.deviations.length > oldSnapshot.context.deviations.length;

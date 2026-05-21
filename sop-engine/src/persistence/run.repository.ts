@@ -58,7 +58,7 @@ export class RunRepository {
     const actor = createActor(machine, {
       snapshot: JSON.parse(runRecord.snapshotJson),
     });
-
+    
     actor.start();
     return actor;
   }

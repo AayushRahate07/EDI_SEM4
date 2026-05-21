@@ -78,7 +78,13 @@ function validateNodeEvent(node: SopNode, payload: any): boolean {
   }
   
   if (node.type === 'VERIFICATION') {
-    return payload.verified_entity === node.config.entity_name && payload.success === true;
+    const targetEntity = node.config.yolo_class_name ?? node.config.entity_name;
+    const isEntityMatch = payload.verified_entity === targetEntity;
+    
+    const threshold = node.config.confidence_threshold ?? 0.0;
+    const isConfidenceValid = payload.confidence !== undefined ? payload.confidence >= threshold : true;
+    
+    return isEntityMatch && payload.success === true && isConfidenceValid;
   }
   
   return true;
