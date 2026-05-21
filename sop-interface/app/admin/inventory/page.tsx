@@ -8,6 +8,7 @@ export default function InventoryRegistrationPage() {
     name: "",
     batchNo: "",
     expiryDate: "",
+    yoloClass: "",
   });
   const [status, setStatus] = useState({ type: "", message: "" });
   const [scanning, setScanning] = useState(false);
@@ -47,7 +48,7 @@ export default function InventoryRegistrationPage() {
       if (!response.ok) throw new Error("Failed to register item");
       setStatus({ type: "success", message: "✓ Item successfully linked to NFC Tag!" });
       setTimeout(() => setStatus({ type: "", message: "" }), 4000);
-      setFormData({ nfcUid: "", name: "", batchNo: "", expiryDate: "" });
+      setFormData({ nfcUid: "", name: "", batchNo: "", expiryDate: "", yoloClass: "" });
       lastTimestampRef.current = Date.now(); // Ignore already-seen scans after register
     } catch {
       setStatus({ type: "error", message: "✕ Error saving item. Check backend connection." });
@@ -219,6 +220,29 @@ export default function InventoryRegistrationPage() {
                 onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
                 style={input}
               />
+            </div>
+          </div>
+
+          {/* YOLO Class */}
+          <div style={fieldGroup}>
+            <label style={label}>
+              YOLO Container Class
+              <span style={labelHint}>(What YOLO should detect for this container)</span>
+            </label>
+            <select
+              value={formData.yoloClass}
+              onChange={(e) => setFormData({ ...formData, yoloClass: e.target.value })}
+              style={input}
+            >
+              <option value="">-- Select Container Type --</option>
+              <option value="bottle">Bottle</option>
+              <option value="cup">Cup / Beaker</option>
+              <option value="bowl">Bowl / Mortar</option>
+              <option value="vase">Flask / Vase</option>
+              <option value="wine glass">Volumetric Flask</option>
+            </select>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5 }}>
+              YOLO will confirm this container type is visible during NFC verification.
             </div>
           </div>
 

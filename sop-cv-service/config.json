@@ -1,0 +1,26 @@
+{
+  "scale_roi": {
+    "x": 400,
+    "y": 50,
+    "w": 400,
+    "h": 120
+  },
+  "workstation_zone": {
+    "x": 0,
+    "y": 0,
+    "w": 9999,
+    "h": 9999
+  },
+  "flask_port": 8001,
+  "camera_index": 0,
+  "yolo_interval_ms": 500,
+  "ocr_interval_ms": 800,
+  "push_interval_ms": 300,
+  "ppe_white_ratio_threshold": 0.55,
+  "ppe_skin_ratio_threshold": 0.28,
+  "wrist_history_frames": 15,
+  "wrist_idle_seconds": 2.0,
+  "person_confidence_threshold": 0.20,
+  "auto_verify_confidence_threshold": 0.45,
+  "auto_verify_hold_frames": 5
+}

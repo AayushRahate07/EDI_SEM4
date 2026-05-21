@@ -1,12 +1,32 @@
 import { createMachine, assign } from 'xstate';
 import { SopDag, SopNode } from '../schemas/sop.schema';
 
+export interface YoloState {
+  peopleCount: number;
+  secondVerifier: boolean;
+  ppeStatus: 'PASS' | 'FAIL' | 'UNKNOWN';
+  stationOccupied: boolean;
+  processActivity: string;
+  detectedObjects: string[];
+  updatedAt: string;
+}
+
+export interface WeightState {
+  currentWeight: number | null;
+  initialWeight: number | null;
+  unit: string;
+  ocrConfidence: number;
+  updatedAt: string;
+}
+
 export interface WorkflowContext {
   runId: string;
   currentNodeId: string;
   completedNodes: string[];
   deviations: Array<{ stepId: string; issue: string; timestamp: string }>;
   eventHistory: Array<{ type: string; payload: any; timestamp: string }>;
+  yoloState: YoloState;
+  weightState: WeightState;
 }
 
 export function compileDagToMachine(dag: SopDag, runId: string) {
@@ -16,6 +36,15 @@ export function compileDagToMachine(dag: SopDag, runId: string) {
     completedNodes: [],
     deviations: [],
     eventHistory: [],
+    yoloState: {
+      peopleCount: 0, secondVerifier: false, ppeStatus: 'UNKNOWN',
+      stationOccupied: false, processActivity: 'UNKNOWN',
+      detectedObjects: [], updatedAt: new Date().toISOString(),
+    },
+    weightState: {
+      currentWeight: null, initialWeight: null, unit: 'g',
+      ocrConfidence: 0, updatedAt: new Date().toISOString(),
+    },
   };
 
   const statesConfig: Record<string, any> = {};
@@ -27,7 +56,6 @@ export function compileDagToMachine(dag: SopDag, runId: string) {
       on: {
         EXECUTE_STEP: [
           {
-            // Target Gate 1: Enforce input payload compliance via declarative validation rules
             guard: ({ event }) => validateNodeEvent(node, event.payload),
             actions: assign({
               completedNodes: ({ context }) => [...context.completedNodes, node.id],
@@ -39,7 +67,6 @@ export function compileDagToMachine(dag: SopDag, runId: string) {
             target: getNextStateTarget(node)
           },
           {
-            // Target Gate 2: Trap deviations instantly without updating the pointer position
             actions: assign({
               deviations: ({ context }) => [
                 ...context.deviations,
@@ -51,7 +78,24 @@ export function compileDagToMachine(dag: SopDag, runId: string) {
               ]
             })
           }
-        ]
+        ],
+        // Global sensor events — update context from any state without changing step
+        YOLO_UPDATE: {
+          actions: assign({
+            yoloState: ({ event }) => ({
+              ...(event.payload as any),
+              updatedAt: new Date().toISOString(),
+            })
+          })
+        },
+        WEIGHT_UPDATE: {
+          actions: assign({
+            weightState: ({ event }) => ({
+              ...(event.payload as any),
+              updatedAt: new Date().toISOString(),
+            })
+          })
+        },
       }
     };
   }

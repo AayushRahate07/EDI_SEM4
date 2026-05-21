@@ -101,6 +101,7 @@ model InventoryItem {
   name       String
   batchNo    String?   @map("batch_no")
   expiryDate DateTime? @map("expiry_date")
+  yoloClass  String?   @map("yolo_class")  // COCO class YOLO should detect for this container e.g. 'bottle'
   createdAt  DateTime  @default(now())
 
   @@map("inventory_items")

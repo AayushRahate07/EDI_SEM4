@@ -1192,28 +1192,20 @@ function ValidationBanner({ errors, onDismiss }: ValidationBannerProps) {
 
 export default function SopBuilder() {
   const [nodes, setNodes] = useState<NodeData[]>([]);
-
   const [edges, setEdges] = useState<Edge[]>([]);
-
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<{
-    id: string;
-    ox: number;
-    oy: number;
-  } | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; ox: number; oy: number; } | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [toast, setToast] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-
-  // Archives and Naming/Deploying States
   const [archives, setArchives] = useState<ArchiveEntry[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showArchivesList, setShowArchivesList] = useState(false);
   const [tempSaveName, setTempSaveName] = useState("");
   const [deployToast, setDeployToast] = useState<string | null>(null);
+  const [deployingRun, setDeployingRun] = useState(false);
+  const [lastSavedTemplateId, setLastSavedTemplateId] = useState<string | null>(null);
 
   // Canvas pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1797,8 +1789,41 @@ export default function SopBuilder() {
     }
   };
 
-  const deployToYolo = () => {
-    // Future scope: No pop-up/validation or backend action triggered on click, as requested.
+  const startActiveRun = async () => {
+    if (deployingRun) return;
+    setDeployingRun(true);
+    setDeployToast(null);
+
+    // Step 1: compile + save template (uses a stable name so repeat deploys upsert)
+    const runName = tempSaveName.trim() || `SOP-Run-${Date.now()}`;
+    const success = await compile(runName);
+    if (!success) { setDeployingRun(false); return; }
+
+    // Step 2: derive the templateId from compile() logic (mirrors slugify logic)
+    const slugify = (t: string) => t.toLowerCase().trim().replace(/\s+/g,"-").replace(/[^\w\-]+/,"").replace(/\-\-+/g,"-").replace(/^-+/,"").replace(/-+$/,"");
+    const templateId = `SOP-${slugify(runName)}`;
+
+    // Step 3: start a run
+    try {
+      const r = await fetch("http://localhost:3000/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sopId: templateId }),
+      });
+      if (!r.ok) {
+        const err = await r.json();
+        setValidationErrors([`Failed to start run: ${err.message ?? r.status}`]);
+        setDeployingRun(false);
+        return;
+      }
+      const { run_id } = await r.json();
+      setLastSavedTemplateId(templateId);
+      // Redirect to execution dashboard
+      window.location.href = `/runs/${run_id}`;
+    } catch {
+      setValidationErrors(["Cannot reach backend. Is sop-engine running on port 3000?"]);
+      setDeployingRun(false);
+    }
   };
 
   const selectedNode = nodes.find((n) => n.id === selectedId);
@@ -1869,6 +1894,17 @@ export default function SopBuilder() {
           color: #ffffff;
         }
 
+        .btn-inventory {
+          background: rgba(245, 158, 11, 0.05);
+          border: 1px solid rgba(245, 158, 11, 0.3);
+          color: #fbbf24;
+        }
+        .btn-inventory:hover {
+          background: rgba(245, 158, 11, 0.8);
+          border-color: rgba(251, 191, 36, 0.85);
+          color: #ffffff;
+        }
+
         .btn-deploy {
           background: rgba(16, 185, 129, 0.05);
           border: 1px solid rgba(16, 185, 129, 0.35);
@@ -1935,6 +1971,14 @@ export default function SopBuilder() {
           </button>
 
           <button
+            onClick={() => window.open("/admin/inventory", "_blank")}
+            className="topbar-btn btn-inventory"
+          >
+            <span className="material-symbols-outlined">nfc</span>
+            <span>Inventory</span>
+          </button>
+
+          <button
             onClick={() => {
               setTempSaveName(`SOP-Template-${archives.length + 1}`);
               setShowSaveModal(true);
@@ -1946,11 +1990,13 @@ export default function SopBuilder() {
           </button>
 
           <button
-            onClick={deployToYolo}
+            onClick={startActiveRun}
+            disabled={deployingRun}
             className="topbar-btn btn-deploy"
+            style={{ opacity: deployingRun ? 0.6 : 1 }}
           >
             <span className="material-symbols-outlined">bolt</span>
-            <span>Deploy Compliance</span>
+            <span>{deployingRun ? "Starting Run..." : "Deploy Compliance"}</span>
           </button>
         </div>
       </div>
@@ -2041,7 +2087,7 @@ export default function SopBuilder() {
                 zIndex: 200,
               }}
             >
-              Template compiled — check console
+              ✓ Template saved to engine
             </div>
           </div>
         </div>
