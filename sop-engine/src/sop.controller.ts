@@ -1,5 +1,5 @@
 // src/sop.controller.ts
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { PrismaService } from './persistence/prisma.service';
 import { SopDagSchema } from './schemas/sop.schema';
 
@@ -14,8 +14,15 @@ export class SopController {
     console.log('   PERSISTING WORKFLOW FROM FRONTEND CANVAS ');
     console.log('=============================================');
 
-    // 1. Validate against Zod schema to ensure shape compliance
-    const validated = SopDagSchema.parse(payload);
+    // 1. Validate against Zod schema — return a clean 400 on bad input
+    const parseResult = SopDagSchema.safeParse(payload);
+    if (!parseResult.success) {
+      throw new BadRequestException({
+        message: 'SOP payload validation failed',
+        errors: parseResult.error.flatten().fieldErrors,
+      });
+    }
+    const validated = parseResult.data;
 
     // 2. Perform database persistence in a transaction
     await this.prisma.client.$transaction(async (tx) => {

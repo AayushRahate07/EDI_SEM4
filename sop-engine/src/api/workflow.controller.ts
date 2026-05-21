@@ -35,10 +35,14 @@ export class WorkflowController {
       throw new NotFoundException(`SOP Template Blueprint "${templateId}" not found.`);
     }
 
+    if (!dbTemplate.startNodeId) {
+      throw new NotFoundException(`SOP Template "${templateId}" has no start node configured.`);
+    }
+
     const templatePayload = {
       template_id: dbTemplate.templateId,
       version: dbTemplate.version,
-      start_node_id: dbTemplate.startNodeId ?? '',
+      start_node_id: dbTemplate.startNodeId,
       nodes: dbTemplate.nodes.map(node => {
         const connectedTargets = node.outgoingTransitions.map(t => t.toNode.idFromUi);
 
@@ -52,7 +56,13 @@ export class WorkflowController {
       })
     };
 
-    return SopDagSchema.parse(templatePayload) as SopDag;
+    const parsed = SopDagSchema.safeParse(templatePayload);
+    if (!parsed.success) {
+      throw new NotFoundException(
+        `Stored SOP Template "${templateId}" has corrupted data: ${parsed.error.message}`
+      );
+    }
+    return parsed.data;
   }
 
   @Post()
@@ -71,12 +81,14 @@ export class WorkflowController {
     
     const machine = compileDagToMachine(validatedDag, runId);
     const actor = createActor(machine).start();
+    const initialSnapshot = actor.getSnapshot();
+    actor.stop(); // Prevent memory leak — actor is ephemeral here
 
     await this.runRepo.initializeRun(
       runId,
       body.sopId,
       validatedDag.start_node_id,
-      JSON.stringify(actor.getSnapshot())
+      JSON.stringify(initialSnapshot)
     );
 
     return {
@@ -99,6 +111,7 @@ export class WorkflowController {
 
     actor.send({ type: eventPayload.type, payload: eventPayload.payload });
     const newSnapshot = actor.getSnapshot();
+    actor.stop(); // Prevent memory leak
 
     const deviationTriggered = newSnapshot.context.deviations.length > oldSnapshot.context.deviations.length;
     const validationResult = deviationTriggered ? 'DEVIATION' : 'PASS';
@@ -122,6 +135,7 @@ export class WorkflowController {
     const validatedDag = await this.fetchAndBuildTemplatePayload(runMetadata.sopId);
     const actor = await this.runRepo.rehydrateActor(id, validatedDag);
     const snapshot = actor.getSnapshot();
+    actor.stop(); // Prevent memory leak
 
     return {
       run_id: id,

@@ -329,7 +329,20 @@ function EdgesLayer({
       width={canvasSize.width}
       height={canvasSize.height}
     >
-      {/* Keeping your existing <defs> markers untouched... */}
+      <defs>
+        <marker id="arr-default" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#2a2f3d" />
+        </marker>
+        <marker id="arr-selected" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#f5a623" />
+        </marker>
+        <marker id="arr-reject" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#f87171" />
+        </marker>
+        <marker id="arr-resolve" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#2dd4a0" />
+        </marker>
+      </defs>
 
       {edges.map((e) => {
         const from = getPortPos(e.from, "out");
@@ -356,7 +369,15 @@ function EdgesLayer({
                       : "#2a2f3d"
               }
               strokeWidth={isHL ? 2 : 1.5}
-              markerEnd={isHL ? "url(#arr-selected)" : "url(#arr-default)"}
+              markerEnd={
+                isHL
+                  ? "url(#arr-selected)"
+                  : e.condition === "REJECT"
+                    ? "url(#arr-reject)"
+                    : e.condition === "RESOLVE"
+                      ? "url(#arr-resolve)"
+                      : "url(#arr-default)"
+              }
             />
 
             {/* Conditional Text Badge pill inside SVG space */}
@@ -1557,8 +1578,8 @@ export default function SopBuilder() {
       return ["The canvas workspace is empty. Create at least one step node."];
     }
 
-    // 1. Identify your true workflow root (the start node)
-    const rootNode = nodes[0];
+    // 1. Identify your true workflow root (node with no incoming edges)
+    const rootNode = nodes.find((n) => !edges.some((e) => e.to === n.id)) || nodes[0];
 
     // 2. Build a bidirectional connectivity map (Treating the graph as undirected for isolation checks)
     const connectedNodeIds = new Set<string>([rootNode.id]);
@@ -1635,11 +1656,20 @@ export default function SopBuilder() {
       ? `SOP-${slugify(customName)}`
       : `SOP-${Date.now()}`;
 
-    // 1. Serialize the component state into the verified JSON structure
+    // 1. Find the true start node (no incoming edges) before building payload
+    const trueStartNode = nodes.find((n) => !edges.some((e) => e.to === n.id)) || nodes[0];
+
+    // Safety guard — validate() should have already caught this, but be explicit
+    if (!trueStartNode) {
+      setValidationErrors(["Cannot determine workflow start node. Add at least one step."]);
+      return false;
+    }
+
+    // 2. Serialize the component state into the verified JSON structure
     const sopPayload = {
       template_id: templateId,
       version: "1.0.0",
-      start_node_id: nodes[0]?.id || "",
+      start_node_id: trueStartNode.id,
       nodes: nodes.map((n) => {
         const outgoingEdges = edges.filter((e) => e.from === n.id);
 
@@ -1698,8 +1728,7 @@ export default function SopBuilder() {
       setValidationErrors([
         "Failed to save SOP configuration to the backend server. Connection refused.",
       ]);
-      // Note: We still return true here so the local archives save succeeds even if backend connection fails (e.g. server offline during testing)
-      return true;
+      return false;
     }
   };
 
@@ -2076,6 +2105,11 @@ export default function SopBuilder() {
                 marginBottom: 20,
               }}
               autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && tempSaveName.trim()) {
+                  saveToArchives(tempSaveName);
+                }
+              }}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
               <button

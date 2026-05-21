@@ -1,5 +1,6 @@
 datasource db {
   provider = "sqlite"
+  url      = "file:./prisma/dev.db"
 }
 
 generator client {
@@ -36,8 +37,8 @@ model SopNode {
   y          Float
 
   // Configuration thresholds serialized as raw stringified JSON payloads
-  // VERIFICATION: '{"verified_entity": "Ketoprofen"}'
-  // MEASUREMENT:  '{"target_value": 500, "tolerance": 5}'
+  // VERIFICATION: '{"entity_name": "Ketoprofen", "mode": "MANUAL_ENTRY"}'
+  // MEASUREMENT:  '{"target_value": 500, "unit": "mg", "tolerance_positive": 5, "tolerance_negative": 5}'
   config     String
 
   // Relations

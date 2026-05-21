@@ -51,7 +51,7 @@ export const SopNodeSchema = z.discriminatedUnion('type', [
 export const SopDagSchema = z.object({
   template_id: z.string(),
   version: z.string(),
-  start_node_id: z.string(),
+  start_node_id: z.string().min(1, { message: 'start_node_id must be a non-empty string' }),
   nodes: z.array(SopNodeSchema),
 }).refine((dag) => {
   const nodeIds = new Set(dag.nodes.map(n => n.id));
