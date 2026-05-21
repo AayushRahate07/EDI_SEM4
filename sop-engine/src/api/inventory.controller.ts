@@ -43,9 +43,10 @@ export class InventoryController {
 
     // Always capture the raw UID so the registration page can poll and auto-fill
     lastScan = { uid: body.uid.toUpperCase(), timestamp: Date.now() };
+    const normalisedUid = lastScan.uid; // Use the uppercased version for DB lookup
 
     const item = await this.prisma.client.inventoryItem.findUnique({
-      where: { nfcUid: body.uid }
+      where: { nfcUid: normalisedUid }
     });
 
     if (!item) {

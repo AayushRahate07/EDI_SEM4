@@ -46,8 +46,9 @@ export default function InventoryRegistrationPage() {
       });
       if (!response.ok) throw new Error("Failed to register item");
       setStatus({ type: "success", message: "✓ Item successfully linked to NFC Tag!" });
+      setTimeout(() => setStatus({ type: "", message: "" }), 4000);
       setFormData({ nfcUid: "", name: "", batchNo: "", expiryDate: "" });
-      lastTimestampRef.current = 0;
+      lastTimestampRef.current = Date.now(); // Ignore already-seen scans after register
     } catch {
       setStatus({ type: "error", message: "✕ Error saving item. Check backend connection." });
     }
