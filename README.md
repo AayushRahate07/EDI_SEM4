@@ -1,6 +1,6 @@
 # EDI_SEM4 — SOP Workflow Studio
 
-> **Team Vollab** | Semester 4 EDI Project  
+> **Team Collab** | Semester 4 EDI Project  
 > A full-stack platform for building, validating, and executing **Standard Operating Procedures (SOPs)** as visual node-based DAG workflows with NFC-based physical inventory verification.
 
 ---
