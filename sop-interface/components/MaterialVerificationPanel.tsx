@@ -53,6 +53,16 @@ export default function MaterialVerificationPanel({
         const r = await fetch("http://localhost:3000/api/hardware/last-scan");
         const data = await r.json();
 
+        // Establish baseline on first check to ignore previous scans
+        if (lastTimestampRef.current === 0) {
+          if (data.timestamp) {
+            lastTimestampRef.current = data.timestamp;
+          } else {
+            lastTimestampRef.current = 1;
+          }
+          return;
+        }
+
         // Only process if this is a NEW scan (fresh timestamp)
         if (!data.uid || data.timestamp <= lastTimestampRef.current) return;
         lastTimestampRef.current = data.timestamp;

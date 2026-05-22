@@ -7,7 +7,7 @@ const axios = require('axios');
 //   Windows: COM3, COM4, COM6, etc.
 //   macOS:   /dev/tty.usbmodem14101  (run: ls /dev/tty.* to find yours)
 //   Linux:   /dev/ttyUSB0 or /dev/ttyACM0
-const PORT_NAME = process.env.COM_PORT || 'COM6';
+const PORT_NAME = process.env.COM_PORT || 'COM3';
 const BAUD_RATE = 9600;
 const API_URL = process.env.API_URL || 'http://localhost:3000/api/hardware/scan';
 
@@ -17,6 +17,12 @@ const port = new SerialPort({ path: PORT_NAME, baudRate: BAUD_RATE }, function (
   if (err) {
     return console.log('Error opening port: ', err.message);
   }
+  // Enable DTR and RTS to ensure stable serial transmission on all boards
+  port.set({ dtr: true, rts: true }, function (err) {
+    if (err) {
+      console.log('Error setting DTR/RTS: ', err.message);
+    }
+  });
 });
 
 const parser = port.pipe(new ReadlineParser({ delimiter: '\n' }));
