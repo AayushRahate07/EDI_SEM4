@@ -209,8 +209,8 @@ Open a **third terminal**:
 cd nfc-bridge
 npm install
 
-# Windows (replace COM6 with your actual port):
-set COM_PORT=COM6 && npm start
+# Windows PowerShell (replace COM6 with your actual port):
+$env:COM_PORT="COM6"; npm start
 
 # macOS:
 COM_PORT=/dev/tty.usbmodem14101 npm start
@@ -229,13 +229,13 @@ Once set up, just run these three commands (each in its own terminal):
 
 ```bash
 # Terminal 1 — Backend
-cd sop-engine && npm run start:dev
+cd sop-engine; npm run start:dev
 
 # Terminal 2 — Frontend  
-cd sop-interface && npm run dev
+cd sop-interface; npm run dev
 
 # Terminal 3 — NFC Bridge (only if using hardware)
-cd nfc-bridge && set COM_PORT=COM6 && npm start
+cd nfc-bridge; $env:COM_PORT="COM6"; npm start
 ```
 
 Then open **http://localhost:3001** in your browser.
