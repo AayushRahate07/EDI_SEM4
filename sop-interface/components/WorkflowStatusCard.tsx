@@ -38,9 +38,13 @@ export default function WorkflowStatusCard({ currentStepId, completedSteps, node
     requirements.push(`Material: ${currentNode.config.entity_name || "—"}`);
     requirements.push(`Mode: ${currentNode.config.mode || "MANUAL_ENTRY"}`);
   } else if (currentNode?.type === "MEASUREMENT") {
-    requirements.push(`Target: ${currentNode.config.target_value}${currentNode.config.unit}`);
-    requirements.push(`Tolerance: ±${currentNode.config.tolerance_positive}${currentNode.config.unit}`);
-    requirements.push(`Acceptable: ${currentNode.config.target_value - currentNode.config.tolerance_negative}–${currentNode.config.target_value + currentNode.config.tolerance_positive}${currentNode.config.unit}`);
+    const tv = currentNode.config.target_value;
+    const tp = currentNode.config.tolerance_positive;
+    const tn = currentNode.config.tolerance_negative;
+    const u  = currentNode.config.unit;
+    requirements.push(`Add: ${tv}${u}`);
+    requirements.push(`Tolerance: ±${tp}${u}`);
+    requirements.push(`Acceptable: ${tv - tn}–${tv + tp}${u} added`);
   }
 
   return (

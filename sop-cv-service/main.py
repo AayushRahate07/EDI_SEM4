@@ -47,14 +47,16 @@ _run_id: str   = ""
 
 def post_event(event_type: str, payload: dict):
     """Fire and forget POST to sop-engine event endpoint."""
+    if not _run_id:
+        return
     try:
         requests.post(
             f"{BACKEND}/runs/{_run_id}/events",
             json={'type': event_type, 'payload': payload},
             timeout=2,
         )
-    except Exception as e:
-        print(f"[CV] Event POST failed ({event_type}): {e}")
+    except Exception:
+        pass
 
 
 def get_current_step() -> Optional[dict]:
@@ -62,6 +64,8 @@ def get_current_step() -> Optional[dict]:
     Fetch current run status and return the active node dict, or None.
     Returns: { id, type, config: { mode, entity_name, yolo_class_name, ... } }
     """
+    if not _run_id:
+        return None
     try:
         r = requests.get(f"{BACKEND}/runs/{_run_id}/status", timeout=2)
         if r.ok:
@@ -72,6 +76,26 @@ def get_current_step() -> Optional[dict]:
     except Exception:
         pass
     return None
+
+
+def active_run_poller():
+    global _run_id
+    print("[CV] Active run poller thread started.")
+    while True:
+        try:
+            r = requests.get(f"{BACKEND}/runs/active", timeout=2)
+            if r.ok:
+                active_id = r.json().get('run_id')
+                if active_id and active_id != _run_id:
+                    print(f"[CV] Auto-attached/Switched to active run: {active_id}")
+                    _run_id = active_id
+            else:
+                if _run_id != "":
+                    print("[CV] No active run detected. Standing by...")
+                    _run_id = ""
+        except Exception:
+            pass
+        time.sleep(2.0)
 
 
 # ─── YOLO worker thread ────────────────────────────────────────────────────────
@@ -171,9 +195,9 @@ def push_worker():
                 'peopleCount':    ys.get('peopleCount', 0),
                 'secondVerifier': ys.get('secondVerifier', False),
                 'ppeStatus':      ys.get('ppeStatus', 'UNKNOWN'),
-                'stationOccupied':ys.get('stationOccupied', False),
-                'processActivity':ys.get('processActivity', 'UNKNOWN'),
-                'detectedObjects':ys.get('detectedObjects', []),
+                'stationOccupied': ys.get('stationOccupied', False),
+                'processActivity': ys.get('processActivity', 'UNKNOWN'),
+                'detectedObjects': ys.get('detectedObjects', []),
             })
 
         post_event('WEIGHT_UPDATE', {
@@ -233,22 +257,13 @@ def main():
 
     if args.run_id:
         _run_id = args.run_id
-    else:
-        # Auto-detect: ask engine for the latest active run
-        print("[CV] No --run-id given. Fetching latest active run from engine...")
-        try:
-            r = requests.get(f"{BACKEND}/runs/active", timeout=5)
-            r.raise_for_status()
-            _run_id = r.json()['run_id']
-            print(f"[CV] Auto-attached to run: {_run_id}")
-        except Exception as e:
-            print(f"[CV] ERROR: Could not fetch active run from engine: {e}")
-            print(f"[CV] Is sop-engine running? Is there an active workflow run?")
-            import sys; sys.exit(1)
+        print(f"[CV] Initial Run ID: {_run_id}")
+
+    print("[CV] Starting active run poller...")
+    threading.Thread(target=active_run_poller, daemon=True).start()
 
     print("=" * 60)
     print("  SOP CV Service")
-    print(f"  Run ID     : {_run_id}")
     print(f"  Backend    : {BACKEND}")
     print(f"  Camera     : {CAM_INDEX}")
     print(f"  Stream     : http://localhost:{FLASK_PORT}/video_feed")

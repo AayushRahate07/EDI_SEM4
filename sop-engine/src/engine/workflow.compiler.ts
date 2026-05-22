@@ -138,8 +138,9 @@ function validateNodeEvent(node: SopNode, payload: any): boolean {
   if (!payload) return false;
 
   if (node.type === 'MEASUREMENT') {
-    const val = payload.value;
-    const low = node.config.target_value - node.config.tolerance_negative;
+    // Use delta (amount added) if provided, otherwise fall back to absolute value
+    const val = payload.delta !== undefined ? payload.delta : payload.value;
+    const low  = node.config.target_value - node.config.tolerance_negative;
     const high = node.config.target_value + node.config.tolerance_positive;
     return val >= low && val <= high;
   }

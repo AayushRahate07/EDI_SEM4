@@ -237,7 +237,7 @@ function WorkflowNode({
             )
           ) : (
             <div style={{ fontSize: 11, color: "#8890a8", lineHeight: 1.5 }}>
-              Target:{" "}
+              Add:{" "}
               <span style={{ color: "#d4d8e8", fontWeight: 500 }}>
                 {node.config.targetValue !== undefined && node.config.targetValue !== "" ? `${node.config.targetValue}${node.config.unit || "mg"}` : "—"}
               </span>{" "}
@@ -935,7 +935,7 @@ function Sidebar({
           {node.type === "MEASUREMENT" && (
             <>
               <div style={sectionStyle}>
-                <label style={labelStyle}>Target Value</label>
+                <label style={labelStyle}>Weight to Add</label>
                 <input
                   style={inputStyle}
                   type="number"
@@ -1637,7 +1637,7 @@ export default function SopBuilder() {
     nodes.forEach((node) => {
       if (node.type === "MEASUREMENT") {
         if (node.config.targetValue === undefined || node.config.targetValue === "") {
-          errors.push(`Measurement step "${node.title}" must specify a target value.`);
+          errors.push(`Measurement step "${node.title}" must specify a weight to add.`);
         }
         if (node.config.tolerance === undefined || node.config.tolerance === "") {
           errors.push(`Measurement step "${node.title}" must specify a tolerance.`);

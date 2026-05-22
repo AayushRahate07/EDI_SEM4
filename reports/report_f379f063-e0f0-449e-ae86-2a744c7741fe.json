@@ -1,0 +1,61 @@
+{
+  "run_id": "f379f063-e0f0-449e-ae86-2a744c7741fe",
+  "sop_id": "SOP-sop-run-1779478288632",
+  "status": "COMPLETED",
+  "started_at": "2026-05-22T19:50:40.606Z",
+  "completed_at": "2026-05-22T19:50:44.650Z",
+  "duration_seconds": 4,
+  "total_steps": 3,
+  "passed_steps": 3,
+  "failed_steps": 0,
+  "pending_steps": 0,
+  "operator_summary": {
+    "peak_people_count": 1,
+    "second_verifier_present": false,
+    "ppe_status": "FAIL",
+    "last_activity": "IDLE"
+  },
+  "steps": [
+    {
+      "node_id": "step_1779473066576_0",
+      "title": "New Verification",
+      "type": "VERIFICATION",
+      "status": "PASS",
+      "submitted_value": "Salt",
+      "target_value": null,
+      "unit": null,
+      "tolerance": null,
+      "expected_entity": "Salt",
+      "timestamp": "2026-05-22T19:50:41.627Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779473085789_1",
+      "title": "New Measurement",
+      "type": "MEASUREMENT",
+      "status": "PASS",
+      "submitted_value": 10,
+      "target_value": 10,
+      "unit": "g",
+      "tolerance": "±4g",
+      "expected_entity": null,
+      "timestamp": "2026-05-22T19:50:43.138Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779474416638_0",
+      "title": "New Measurement",
+      "type": "MEASUREMENT",
+      "status": "PASS",
+      "submitted_value": 20,
+      "target_value": 10,
+      "unit": "g",
+      "tolerance": "±5g",
+      "expected_entity": null,
+      "timestamp": "2026-05-22T19:50:44.653Z",
+      "deviations": []
+    }
+  ],
+  "deviations": [],
+  "events_count": 3
+}

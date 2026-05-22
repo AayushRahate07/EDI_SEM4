@@ -64,6 +64,40 @@ export default function RunDashboard() {
   const hasDeviations = (status?.deviations?.length??0)>0;
   const currentYoloClass = currentNode?.config?.yolo_class_name ?? null;
 
+  // Find the last completed measurement event to get its final weight
+  const lastMeasurementEvent = [...events]
+    .reverse()
+    .find(e => 
+      e.eventType === 'EXECUTE_STEP' && 
+      e.validationResult === 'PASS' && 
+      (e.payload?.final_weight !== undefined || e.payload?.value !== undefined)
+    );
+
+  const lastFinalWeight = lastMeasurementEvent
+    ? (lastMeasurementEvent.payload?.final_weight ?? lastMeasurementEvent.payload?.value ?? null)
+    : null;
+
+
+  // Find the nearest preceding VERIFICATION step to know what material is being measured
+  const precedingVerificationNode = (() => {
+    if (!currentNode || !status?.nodes) return null;
+    const incomingEdge = status.nodes.find(n => 
+      n.type === "VERIFICATION" && 
+      Array.isArray(n.config.next_nodes) && 
+      n.config.next_nodes.includes(currentNode.id)
+    );
+    if (incomingEdge) return incomingEdge;
+    const curIdx = status.nodes.findIndex(n => n.id === currentNode.id);
+    if (curIdx > 0) {
+      for (let i = curIdx - 1; i >= 0; i--) {
+        if (status.nodes[i].type === "VERIFICATION") return status.nodes[i];
+      }
+    }
+    return null;
+  })();
+
+  const targetYoloClass = precedingVerificationNode?.config?.yolo_class_name ?? precedingVerificationNode?.config?.entity_name ?? null;
+
   if (loading) return (
     <div style={{ minHeight:"100vh", background:"#060810", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ fontFamily:"'IBM Plex Mono',monospace", color:"#2dd4a0", fontSize:14 }}>Connecting to run engine...</div>
@@ -166,8 +200,13 @@ export default function RunDashboard() {
               weightState={status?.weightState ?? { currentWeight:null, initialWeight:null, unit:"g", ocrConfidence:0 }}
               runId={runId}
               onEventSent={()=>{ setTimeout(()=>{ fetchStatus(); fetchEvents(); }, 500); }}
+              lastFinalWeight={lastFinalWeight}
+              detectedObjects={status?.yoloState?.detectedObjects ?? []}
+              processActivity={status?.yoloState?.processActivity ?? "UNKNOWN"}
+              targetYoloClass={targetYoloClass}
             />
           )}
+
 
           <EventLogPanel events={events} />
         </div>
