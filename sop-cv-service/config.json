@@ -1,9 +1,9 @@
 {
   "scale_roi": {
-    "x": 400,
-    "y": 50,
-    "w": 400,
-    "h": 120
+    "x": 930,
+    "y": 340,
+    "w": 200,
+    "h": 160
   },
   "workstation_zone": {
     "x": 0,
@@ -13,11 +13,16 @@
   },
   "flask_port": 8001,
   "camera_index": 0,
+  "ip_camera_url": "http://192.168.88.166:8080/video",
+  "ip_camera_enabled": true,
+  "_ip_camera_url_note": "If IPv4 fails try: http://[2409:4081:1c4a:b351:8c76:8be4:25b9:bb8d]:8080/video",
   "yolo_interval_ms": 500,
   "ocr_interval_ms": 800,
   "push_interval_ms": 300,
-  "ppe_white_ratio_threshold": 0.55,
-  "ppe_skin_ratio_threshold": 0.28,
+  "ppe_white_ratio_threshold": 0.60,
+  "ppe_skin_ratio_threshold": 0.22,
+  "glove_skin_ratio_threshold": 0.10,
+  "glove_colors": ["blue", "purple", "green", "white"],
   "wrist_history_frames": 15,
   "wrist_idle_seconds": 2.0,
   "person_confidence_threshold": 0.20,
