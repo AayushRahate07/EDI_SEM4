@@ -7,7 +7,7 @@ export const MeasurementNodeSchema = z.object({
   x: z.number().optional(),
   y: z.number().optional(),
   config: z.object({
-    target_value: z.number().positive(),
+    target_value: z.number().nonnegative(),
     unit: z.enum(['mg', 'g', 'ml', 'C']),
     tolerance_positive: z.number().nonnegative(),
     tolerance_negative: z.number().nonnegative(),

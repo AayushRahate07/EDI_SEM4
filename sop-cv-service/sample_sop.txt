@@ -1,0 +1,91 @@
+STANDARD OPERATING PROCEDURE
+=============================
+SOP Title  : Ketoprofen API Weighing and Dispensing
+SOP Number : SOP-KETOPROFEN-001
+Version    : 1.0
+Department : Manufacturing — Dispensing Suite A
+Effective  : 2026-01-10
+Reviewed by: QA Lead
+
+1. PURPOSE
+----------
+This procedure describes the steps required to weigh and dispense
+Ketoprofen Active Pharmaceutical Ingredient (API) for a single
+batch of 10,000 tablets at 100 mg strength.
+
+2. SCOPE
+--------
+Applies to all dispensing operators and second-person verifiers
+working in Dispensing Suite A.
+
+3. MATERIALS REQUIRED
+---------------------
+- Ketoprofen API (Batch pre-approved by QC)
+- Analytical balance (calibrated, range 0–2000 g)
+- Stainless steel spatula
+- Amber dispensing container (labelled)
+- Disposable gloves, lab coat, safety goggles, hair net
+
+4. PROCEDURE
+------------
+
+Step 1 — Personal Protective Equipment
+  Before entering the dispensing suite, the operator must don:
+    - Disposable nitrile gloves
+    - Lab coat (buttoned)
+    - Safety goggles
+    - Hair net
+  A supervisor must visually confirm PPE compliance before the
+  operator proceeds.
+
+Step 2 — Balance Verification
+  Check the analytical balance reading with no load on the pan.
+  The tare reading must be 0.00 g (+/- 0.05 g).
+  If the reading is outside this range, do not proceed —
+  contact the Instrumentation team to recalibrate.
+
+Step 3 — Container Identity Verification
+  Scan the NFC tag on the Ketoprofen API container.
+  Confirm the system displays "Ketoprofen API — APPROVED".
+  If the system shows any other status, quarantine the container
+  and inform QA immediately. Do not proceed.
+
+Step 4 — Weigh Ketoprofen API
+  Using the stainless steel spatula, transfer Ketoprofen API from
+  the bulk container to the dispensing container on the balance pan.
+  Target weight : 1000.00 g
+  Acceptable range : 995.00 g to 1005.00 g (tolerance +/- 5 g)
+  Record the exact weight in the Batch Manufacturing Record (BMR).
+
+Step 5 — Weight Check Decision
+  If the weight is within the acceptable range, proceed to Step 6.
+  If the weight is below 995 g, add more API and re-weigh (retry Step 4).
+  If the weight is above 1005 g, remove excess API and re-weigh (retry Step 4).
+
+Step 6 — Second Person Verification
+  A second authorised person (not the dispensing operator) must:
+    - Independently confirm the weight displayed on the balance.
+    - Check the BMR entry matches the balance display.
+    - Sign and date the BMR in the "Second Verifier" field.
+  This step cannot be skipped or self-verified.
+
+Step 7 — Seal and Label
+  Seal the dispensing container with a tamper-evident closure.
+  Affix a dispensing label containing:
+    - Material name and batch number
+    - Dispensed weight and date
+    - Operator and verifier initials
+  Transfer the sealed container to the Manufacturing Hold area.
+
+5. ACCEPTANCE CRITERIA
+-----------------------
+- PPE fully worn before entry               : PASS / FAIL
+- Balance tare within 0.00 +/- 0.05 g      : PASS / FAIL
+- Container NFC verified as APPROVED        : PASS / FAIL
+- Dispensed weight 995–1005 g              : PASS / FAIL
+- Second person sign-off complete           : PASS / FAIL
+
+6. DEVIATIONS
+-------------
+Any deviation from this SOP must be documented on a Deviation Report
+form and reviewed by QA before the batch proceeds.

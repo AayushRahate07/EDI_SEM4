@@ -26,8 +26,9 @@ Quick-start
 
 Environment variables
 ---------------------
-  OPENAI_API_KEY    — set this OR ANTHROPIC_API_KEY
-  ANTHROPIC_API_KEY — used when OPENAI_API_KEY is absent
+  GEMINI_API_KEY    — Google Gemini API key (students.google.com / AI Studio)
+  OPENAI_API_KEY    — set this OR one of the above
+  ANTHROPIC_API_KEY — used when neither GEMINI nor OPENAI key is present
   SOP_ENGINE_URL    — default engine URL (overrides the param default)
 
 The human review step prints the generated DAG to stdout in a rich
@@ -173,14 +174,35 @@ def _call_anthropic(sop_text: str, model: str = "claude-sonnet-4-20250514") -> s
     return message.content[0].text
 
 
+def _call_gemini(sop_text: str, model: str = "gemini-2.5-flash") -> str:
+    """Call Google Gemini API and return raw response text (JSON mode)."""
+    from google import genai  # pip install google-genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    prompt = f"{_SYSTEM_PROMPT}\n\n{_USER_TEMPLATE.format(sop_text=sop_text)}"
+
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0,
+        ),
+    )
+    return response.text
+
+
 def _call_llm(sop_text: str) -> str:
-    """Auto-select backend based on available env vars."""
+    """Auto-select backend based on available env vars (Gemini → OpenAI → Anthropic)."""
+    if os.environ.get("GEMINI_API_KEY"):
+        return _call_gemini(sop_text)
     if os.environ.get("OPENAI_API_KEY"):
         return _call_openai(sop_text)
     if os.environ.get("ANTHROPIC_API_KEY"):
         return _call_anthropic(sop_text)
     raise EnvironmentError(
-        "No LLM API key found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY."
+        "No LLM API key found. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY."
     )
 
 
@@ -561,6 +583,8 @@ def push_dag_to_engine(
     print(f"[SOP Parser] Pushing DAG to {url} ...")
 
     resp = requests.post(url, json=dag, timeout=10)
+    if not resp.ok:
+        print(f"[SOP Parser] Engine error {resp.status_code}: {resp.text}")
     resp.raise_for_status()
 
     result = resp.json()
