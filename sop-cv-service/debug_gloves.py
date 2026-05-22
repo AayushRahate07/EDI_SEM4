@@ -1,13 +1,25 @@
 import requests, cv2, numpy as np
 
+import os, json
+
+# Load config to get configured Camera 2 URL or USB index
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
+with open(CONFIG_PATH) as f:
+    config = json.load(f)
+
+cam2_source = config.get('camera2_index', config.get('ip_camera_url', 1))
+if isinstance(cam2_source, str) and cam2_source.isdigit():
+    cam2_source = int(cam2_source)
+
 # Grab one frame from cam2 and check what colour ratios we're computing
-cap = cv2.VideoCapture("http://192.168.88.166:8080/video")
+print(f"Connecting to Camera 2 source: {cam2_source}...")
+cap = cv2.VideoCapture(cam2_source)
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 ret, frame = cap.read()
 cap.release()
 
 if not ret:
-    print("Could not read cam2 frame")
+    print(f"Could not read Camera 2 frame from source: {cam2_source}")
     exit()
 
 h, w = frame.shape[:2]

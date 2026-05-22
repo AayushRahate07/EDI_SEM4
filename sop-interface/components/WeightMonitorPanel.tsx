@@ -84,7 +84,7 @@ export default function WeightMonitorPanel({ targetValue, tolerancePositive, tol
       <div style={{ borderRadius:8, overflow:"hidden", border:"1px solid #1c2130", background:"#060810" }}>
         <div style={{ padding:"6px 10px", background:"#090a0f", borderBottom:"1px solid #1c2130", fontSize:9, fontFamily:"'IBM Plex Mono',monospace", color:"#4b5563", textTransform:"uppercase" }}>Live Scale Feed</div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="http://localhost:8001/video_feed" alt="Scale live feed" style={{ width:"100%", display:"block", maxHeight:160, objectFit:"cover" }} onError={e=>{(e.target as HTMLImageElement).style.display="none";}} />
+        <img src="http://localhost:8001/video_feed2" alt="Scale live feed" style={{ width:"100%", display:"block", maxHeight:160, objectFit:"cover" }} onError={e=>{(e.target as HTMLImageElement).style.display="none";}} />
       </div>
 
       {/* Manual input */}

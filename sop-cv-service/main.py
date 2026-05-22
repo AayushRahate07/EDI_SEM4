@@ -1,8 +1,8 @@
 """
 main.py — SOP CV Service (Dual Camera)
-Camera 1: laptop webcam (index 0)   → person, coat, mask, objects at body height
-Camera 2: phone IP webcam (MJPEG)   → desk view, gloves, objects on surface, scale OCR
-Results merged with OR logic for objects/activity. Both feeds streamed independently.
+Camera 1: laptop webcam (index 0)  → person, coat, mask, gloves, objects, activity
+Camera 2: USB webcam  (index 1)    → desk view, gloves, objects on surface, activity
+Results merged with OR logic. Both feeds streamed independently at full webcam speed.
 
 Usage:
     python main.py --run-id <uuid>
@@ -19,7 +19,6 @@ import cv2
 import requests
 from flask import Flask, Response
 
-from ocr_pipeline import OcrPipeline
 from yolo_pipeline import YoloPipeline
 
 # ─── Load config ───────────────────────────────────────────────────────────────
@@ -30,22 +29,18 @@ with open(CONFIG_PATH) as f:
 BACKEND        = 'http://localhost:3000'
 FLASK_PORT     = CONFIG.get('flask_port', 8001)
 YOLO_INTERVAL  = CONFIG.get('yolo_interval_ms', 500)  / 1000
-OCR_INTERVAL   = CONFIG.get('ocr_interval_ms',  800)  / 1000
 PUSH_INTERVAL  = CONFIG.get('push_interval_ms', 300)  / 1000
 CAM_INDEX      = CONFIG.get('camera_index', 0)
-IP_CAM_URL     = CONFIG.get('ip_camera_url', 'http://192.168.88.166:8080/video')
-IP_CAM_ENABLED = CONFIG.get('ip_camera_enabled', True)
+CAM2_INDEX     = CONFIG.get('camera2_index', CONFIG.get('ip_camera_url', 1))
+CAM2_ENABLED   = CONFIG.get('camera2_enabled', CONFIG.get('ip_camera_enabled', True))
 
 # ─── Shared state ──────────────────────────────────────────────────────────────
 _lock           = threading.Lock()
-_latest_frame1  = None   # annotated cam1 frame
-_latest_frame2  = None   # annotated cam2 frame (YOLO overlay)
+_latest_raw1    = None   # raw cam1 frame — updated at full webcam speed for streaming
+_latest_frame1  = None   # annotated cam1 frame (YOLO overlay, updated at YOLO cadence)
 _latest_raw2    = None   # raw cam2 frame — updated at full speed for streaming
 _yolo_state     = None   # merged YOLO result dict
 _cam2_state     = None   # raw cam2 partial state (None if offline)
-_ocr_weight     = None
-_ocr_conf       = 0.0
-_prev_weight    = None
 _run_id: str    = ""
 _cam2_online    = False
 
@@ -76,20 +71,26 @@ def get_current_step() -> Optional[dict]:
     return None
 
 
-def open_ip_camera(url: str, retries: int = 3) -> Optional[cv2.VideoCapture]:
-    """Try opening the IP camera stream. Returns cap or None."""
+def open_camera2(index_or_url, retries: int = 3) -> Optional[cv2.VideoCapture]:
+    """Try opening Camera 2 (USB index or IP URL). Returns cap or None."""
+    if isinstance(index_or_url, str) and index_or_url.isdigit():
+        index_or_url = int(index_or_url)
+
     for attempt in range(retries):
-        cap = cv2.VideoCapture(url)
+        cap = cv2.VideoCapture(index_or_url)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # keep buffer minimal
+        if isinstance(index_or_url, int):
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         if cap.isOpened():
             ret, _ = cap.read()
             if ret:
-                print(f"[CAM2] IP camera connected: {url}")
+                print(f"[CAM2] Camera 2 connected: {index_or_url}")
                 return cap
         cap.release()
         print(f"[CAM2] Connection attempt {attempt+1}/{retries} failed, retrying...")
         time.sleep(2)
-    print(f"[CAM2] Could not connect to {url} — running with cam1 only.")
+    print(f"[CAM2] Could not connect to {index_or_url} — running with cam1 only.")
     return None
 
 
@@ -115,25 +116,38 @@ def cam2_reader(cap: cv2.VideoCapture):
         # No sleep — run as fast as possible to drain buffer
 
 
-# ─── Camera 1 worker (webcam) ──────────────────────────────────────────────────
+# ─── Camera 1 reader — runs at full webcam speed, no inference ───────────────
+
+def cam1_reader(cap: cv2.VideoCapture):
+    """Continuously read cam1 frames into _latest_raw1 for low-latency streaming."""
+    global _latest_raw1
+    print("[CAM1] Frame reader started (full-speed, no inference).")
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.02)
+            continue
+        with _lock:
+            _latest_raw1 = frame
+
+
+# ─── Camera 1 YOLO worker — inference at YOLO_INTERVAL cadence ───────────────
 
 def cam1_worker(cap: cv2.VideoCapture, pipeline: YoloPipeline):
     global _yolo_state, _latest_frame1, _prev_weight
     print("[CAM1] Worker started.")
 
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            time.sleep(0.1)
-            continue
-
         with _lock:
-            cw = _ocr_weight
-            pw = _prev_weight
+            frame = _latest_raw1
             c2 = _cam2_state
 
-        # Process cam1
-        cam1_state, annotated1 = pipeline.process_frame(frame, cw, pw)
+        if frame is None:
+            time.sleep(0.05)
+            continue
+
+        # Process cam1 (no weight data — OCR removed)
+        cam1_state, annotated1 = pipeline.process_frame(frame, None, None)
 
         # Merge with cam2
         merged = pipeline.merge_results(cam1_state, c2)
@@ -178,12 +192,12 @@ def cam1_worker(cap: cv2.VideoCapture, pipeline: YoloPipeline):
 
 # ─── Camera 2 worker — YOLO inference on latest snapshot ─────────────────────
 
-def cam2_worker(pipeline: YoloPipeline, ocr_pipe: OcrPipeline):
+def cam2_worker(pipeline: YoloPipeline):
     """
-    Reads the latest cam2 snapshot (_latest_raw2) and runs YOLO + OCR.
+    Reads the latest cam2 snapshot (_latest_raw2) and runs YOLO.
     Runs at a slower cadence (1s) — display is handled by cam2_reader at full speed.
     """
-    global _cam2_state, _latest_frame2, _ocr_weight, _ocr_conf, _prev_weight
+    global _cam2_state
     print("[CAM2] YOLO worker started (1s cadence).")
 
     while True:
@@ -194,40 +208,12 @@ def cam2_worker(pipeline: YoloPipeline, ocr_pipe: OcrPipeline):
             time.sleep(0.1)
             continue
 
-        # YOLO on desk frame
-        desk_state, annotated2 = pipeline.process_desk_frame(frame)
-
-        # OCR on desk frame
-        weight, conf, _ = ocr_pipe.process_frame(frame)
+        # YOLO on desk frame (no weight data — OCR removed)
+        desk_state, _ = pipeline.process_desk_frame(frame, None, None)
         with _lock:
-            if weight != _ocr_weight:
-                _prev_weight = _ocr_weight
-            _ocr_weight  = weight
-            _ocr_conf    = conf
-            _cam2_state   = desk_state
-            _latest_frame2 = annotated2.copy()
+            _cam2_state = desk_state
 
         time.sleep(1.0)   # 1 fps for inference — display is independent
-
-
-# ─── OCR worker (single camera mode fallback) ──────────────────────────────────
-
-def ocr_worker_cam1(cap: cv2.VideoCapture, pipeline: OcrPipeline):
-    """Used only when cam2 is offline — reads scale from cam1."""
-    global _ocr_weight, _ocr_conf, _prev_weight
-    print("[OCR] Fallback OCR worker (cam1) started.")
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            time.sleep(0.1)
-            continue
-        weight, conf, _ = pipeline.process_frame(frame)
-        with _lock:
-            if weight != _ocr_weight:
-                _prev_weight = _ocr_weight
-            _ocr_weight = weight
-            _ocr_conf   = conf
-        time.sleep(OCR_INTERVAL)
 
 
 # ─── Push worker ───────────────────────────────────────────────────────────────
@@ -237,8 +223,6 @@ def push_worker():
     while True:
         with _lock:
             ys = _yolo_state
-            ow = _ocr_weight
-            oc = _ocr_conf
 
         if ys:
             post_event('YOLO_UPDATE', {
@@ -252,13 +236,6 @@ def push_worker():
                 'cam2Online':      ys.get('cam2Online', False),
             })
 
-        post_event('WEIGHT_UPDATE', {
-            'currentWeight': ow,
-            'initialWeight': None,
-            'unit':          'g',
-            'ocrConfidence': round(oc, 1),
-        })
-
         time.sleep(PUSH_INTERVAL)
 
 
@@ -267,56 +244,68 @@ def push_worker():
 app = Flask(__name__)
 
 
-def _mjpeg_gen(frame_getter):
+def _draw_quick_hud(frame: 'cv2.Mat', state: dict) -> 'cv2.Mat':
+    """
+    Composite a lightweight status HUD onto a raw frame.
+    Uses only cv2.putText — no inference, runs in microseconds.
+    """
+    if state is None:
+        return frame
+    out = frame.copy()
+    lines = [
+        (f"People : {state.get('peopleCount', '?')}",  state.get('peopleCount', 0) > 0),
+        (f"PPE    : {state.get('ppeStatus', '?')}",     state.get('ppeStatus') == 'PASS'),
+        (f"Gloves : {state.get('ppeGloves', '?')}",     state.get('ppeGloves') == 'PASS'),
+        (f"Activity: {state.get('processActivity', '?')}", state.get('processActivity') not in ('IDLE', 'UNKNOWN', None)),
+    ]
+    for i, (text, good) in enumerate(lines):
+        color = (0, 220, 100) if good else (200, 200, 200)
+        cv2.putText(out, text, (10, 22 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
+        cv2.putText(out, text, (10, 22 + i * 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1)
+    return out
+
+
+def _mjpeg_gen(raw_getter):
+    """
+    MJPEG generator — always streams the latest raw frame with a lightweight HUD.
+    No inference on this path; runs at full webcam speed (~30fps).
+    """
+    import numpy as np
     while True:
         with _lock:
-            frame = frame_getter()
+            frame = raw_getter()
+            state = _yolo_state
         if frame is None:
-            time.sleep(0.03)
+            time.sleep(0.02)
             continue
-        ret, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        out = _draw_quick_hud(frame, state)
+        ret, buf = cv2.imencode('.jpg', out, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ret:
             continue
         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
-        time.sleep(1 / 25)  # 25 fps cap
+        # No artificial sleep — let the network/browser throttle naturally
 
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(_mjpeg_gen(lambda: _latest_frame1),
+    return Response(_mjpeg_gen(lambda: _latest_raw1),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/video_feed2')
 def video_feed2():
-    """Stream raw cam2 frames (no YOLO overlay) at full speed for low latency."""
-    def raw_cam2_gen():
-        while True:
-            with _lock:
-                frame = _latest_raw2  # raw frame — no inference blocking
-            if frame is None:
-                time.sleep(0.03)
-                continue
-            ret, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
-            if not ret:
-                continue
-            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
-            time.sleep(1 / 20)  # 20 fps
-    return Response(raw_cam2_gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(_mjpeg_gen(lambda: _latest_raw2),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/status')
 def status():
     with _lock:
         ys = _yolo_state
-        ow = _ocr_weight
-        oc = _ocr_conf
         c2 = _cam2_online
     return {
         'run_id':      _run_id,
         'yolo':        ys,
-        'weight':      ow,
-        'ocr_conf':    oc,
         'cam2_online': c2,
     }
 
@@ -336,7 +325,7 @@ def main():
     print(f"  Run ID     : {_run_id}")
     print(f"  Backend    : {BACKEND}")
     print(f"  Cam1       : webcam index {CAM_INDEX}")
-    print(f"  Cam2       : {IP_CAM_URL if IP_CAM_ENABLED else 'DISABLED'}")
+    print(f"  Cam2       : {CAM2_INDEX if CAM2_ENABLED else 'DISABLED'}")
     print(f"  Stream1    : http://localhost:{FLASK_PORT}/video_feed")
     print(f"  Stream2    : http://localhost:{FLASK_PORT}/video_feed2")
     print("=" * 60)
@@ -352,13 +341,12 @@ def main():
     h = cap1.get(cv2.CAP_PROP_FRAME_HEIGHT)
     print(f"[CAM1] Opened. Resolution: {int(w)}x{int(h)}")
 
-    # Open Camera 2 (IP webcam — desk)
+    # Open Camera 2 (USB webcam or IP URL)
     cap2 = None
-    if IP_CAM_ENABLED:
-        cap2 = open_ip_camera(IP_CAM_URL)
+    if CAM2_ENABLED:
+        cap2 = open_camera2(CAM2_INDEX)
 
     yolo_pipe = YoloPipeline(CONFIG)
-    ocr_pipe  = OcrPipeline(CONFIG)
 
     # Prime cam1 frame
     ret, frame = cap1.read()
@@ -367,16 +355,15 @@ def main():
         _latest_frame1 = frame.copy()
 
     # Start workers
+    # Cam1: reader at full webcam speed + YOLO inference at YOLO_INTERVAL cadence
+    threading.Thread(target=cam1_reader, args=(cap1,), daemon=True).start()
     threading.Thread(target=cam1_worker, args=(cap1, yolo_pipe), daemon=True).start()
 
     if cap2 is not None:
         # Reader thread: drains buffer at full speed (no inference)
         threading.Thread(target=cam2_reader, args=(cap2,), daemon=True).start()
-        # YOLO inference thread: runs at 1s cadence on latest snapshot
-        threading.Thread(target=cam2_worker, args=(yolo_pipe, ocr_pipe), daemon=True).start()
-    else:
-        # Fallback: OCR from cam1
-        threading.Thread(target=ocr_worker_cam1, args=(cap1, ocr_pipe), daemon=True).start()
+        # YOLO inference thread: 1s cadence on latest snapshot
+        threading.Thread(target=cam2_worker, args=(yolo_pipe,), daemon=True).start()
 
     threading.Thread(target=push_worker, daemon=True).start()
 

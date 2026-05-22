@@ -124,7 +124,9 @@ export default function CVStatusPanel({ yoloState, expectedContainer }: CVStatus
 
       {/* Camera feeds */}
       <div style={{ display: "grid", gridTemplateColumns: cam2Online ? "1fr 1fr" : "1fr", gap: 8 }}>
-        <CameraFeed url="http://localhost:8001/video_feed"  label="Live Camera — Cam1 (Operator)" />
+        {!offline && (
+          <CameraFeed url="http://localhost:8001/video_feed"  label="Live Camera — Cam1 (Operator)" />
+        )}
         {cam2Online && (
           <CameraFeed url="http://localhost:8001/video_feed2" label="Live Camera — Cam2 (Desk)" badge="● LIVE" cam2 />
         )}

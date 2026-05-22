@@ -13,6 +13,8 @@
   },
   "flask_port": 8001,
   "camera_index": 0,
+  "camera2_index": 1,
+  "camera2_enabled": true,
   "ip_camera_url": "http://192.168.88.166:8080/video",
   "ip_camera_enabled": true,
   "_ip_camera_url_note": "If IPv4 fails try: http://[2409:4081:1c4a:b351:8c76:8be4:25b9:bb8d]:8080/video",

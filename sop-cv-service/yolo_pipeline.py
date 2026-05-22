@@ -99,10 +99,15 @@ class YoloPipeline:
         self.auto_verify_conf_threshold = config.get('auto_verify_confidence_threshold', 0.45)
         self.auto_verify_hold_frames    = config.get('auto_verify_hold_frames', 5)
 
-        self.wrist_tracker = WristTracker(
+        self.wrist_tracker1 = WristTracker(
             history_frames=config.get('wrist_history_frames', 15),
             idle_seconds=config.get('wrist_idle_seconds', 2.0),
         )
+        self.wrist_tracker2 = WristTracker(
+            history_frames=config.get('wrist_history_frames', 15),
+            idle_seconds=config.get('wrist_idle_seconds', 2.0),
+        )
+        self.wrist_tracker = self.wrist_tracker1
 
         print("[YOLO] Loading YOLOv8n-pose model (cam1: person + keypoints)...")
         self.pose_model   = YOLO('yolov8n-pose.pt')
@@ -213,12 +218,12 @@ class YoloPipeline:
             return 'FAIL'
         return 'UNKNOWN'
 
-    def _infer_activity(self, wrist_l, wrist_r, detected_objects, current_weight, prev_weight) -> str:
-        self.wrist_tracker.update(wrist_l, wrist_r)
-        velocity  = self.wrist_tracker.get_velocity()
-        direction = self.wrist_tracker.get_trajectory_direction()
+    def _infer_activity(self, wrist_l, wrist_r, detected_objects, current_weight, prev_weight, tracker: WristTracker) -> str:
+        tracker.update(wrist_l, wrist_r)
+        velocity  = tracker.get_velocity()
+        direction = tracker.get_trajectory_direction()
 
-        if self.wrist_tracker.is_idle():
+        if tracker.is_idle():
             return 'IDLE'
 
         scale_z   = self.scale_roi
@@ -333,8 +338,24 @@ class YoloPipeline:
         best_wl = next((w for w in all_wrist_l if w), None)
         best_wr = next((w for w in all_wrist_r if w), None)
         state['processActivity'] = self._infer_activity(
-            best_wl, best_wr, detected_objects, current_weight, prev_weight
+            best_wl, best_wr, detected_objects, current_weight, prev_weight, self.wrist_tracker1
         )
+
+        # Glove detection on Camera 1 (laptop webcam)
+        glove_status = self._check_gloves_in_region(frame)
+        state['ppeGloves'] = glove_status
+
+        # Draw gloves and activity status on Camera 1 frame
+        glove_color = COLOR_PASS if glove_status == 'PASS' else (COLOR_FAIL if glove_status == 'FAIL' else COLOR_IDLE)
+        cv2.putText(annotated, f"Gloves: {glove_status}", (10, 44),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(annotated, f"Gloves: {glove_status}", (10, 44),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, glove_color, 1)
+
+        cv2.putText(annotated, f"Activity: {state['processActivity']}", (10, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(annotated, f"Activity: {state['processActivity']}", (10, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_PASS if state['processActivity'] not in ['UNKNOWN', 'IDLE'] else COLOR_IDLE, 1)
 
         wz = self.workstation_zone
         if wz['w'] < 9000:
@@ -353,14 +374,14 @@ class YoloPipeline:
     def process_desk_frame(self, frame: np.ndarray, current_weight=None, prev_weight=None) -> tuple[dict, np.ndarray]:
         """
         Process a desk-camera frame (Camera 2).
-        Returns a partial state dict + annotated frame.
-        Detects: objects on desk, gloves, hand activity on desk.
+        Detects: objects on desk surface + gloves only.
+        No person/pose detection — Camera 1 exclusively handles operator tracking.
         """
         annotated          = frame.copy()
         detected_objects   = []
         object_confidences = {}
 
-        # Object detection on desk
+        # Object detection only (detect_model) — no pose model on Camera 2
         detect_r = self.detect_model(frame, classes=list(RELEVANT_OBJECTS.keys()), verbose=False)[0]
         for det in detect_r.boxes:
             cls_id = int(det.cls[0])
@@ -375,7 +396,7 @@ class YoloPipeline:
                 cv2.putText(annotated, f"{obj_name} {conf:.0%}", (x1, y1 - 6),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLOR_CAM2, 2)
 
-        # Glove detection
+        # Glove detection via HSV color analysis
         glove_status = self._check_gloves_in_region(frame)
         glove_color  = COLOR_PASS if glove_status == 'PASS' else (COLOR_FAIL if glove_status == 'FAIL' else COLOR_IDLE)
         cv2.putText(annotated, f"Gloves: {glove_status}", (10, 22),
@@ -383,13 +404,46 @@ class YoloPipeline:
         cv2.putText(annotated, f"Gloves: {glove_status}", (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, glove_color, 1)
 
-        # Station occupied (any person visible on desk cam)
+        # Station occupied (any person visible on desk cam) and wrist tracking
         pose_r = self.pose_model(frame, verbose=False)[0]
-        desk_people = sum(
-            1 for det in pose_r.boxes
-            if int(det.cls[0]) == PERSON_CLASS_ID and float(det.conf[0]) > self.person_conf
+        desk_people = []
+        all_wrist_l, all_wrist_r = [], []
+
+        for i, det in enumerate(pose_r.boxes):
+            cls_id = int(det.cls[0])
+            conf   = float(det.conf[0])
+            if cls_id == PERSON_CLASS_ID and conf > self.person_conf:
+                desk_people.append(det)
+                if pose_r.keypoints is not None and i < len(pose_r.keypoints):
+                    kps     = pose_r.keypoints.xy[i].cpu().numpy()
+                    kp_conf = pose_r.keypoints.conf[i].cpu().numpy() if pose_r.keypoints.conf is not None else None
+
+                    def get_kp(idx):
+                        if kps[idx][0] > 0 and kps[idx][1] > 0:
+                            if kp_conf is None or kp_conf[idx] > 0.3:
+                                return (int(kps[idx][0]), int(kps[idx][1]))
+                        return None
+
+                    wl = get_kp(KP_LEFT_WRIST)
+                    wr = get_kp(KP_RIGHT_WRIST)
+                    all_wrist_l.append(wl)
+                    all_wrist_r.append(wr)
+                    for kp in [wl, wr]:
+                        if kp:
+                            cv2.circle(annotated, kp, 5, (255, 100, 0), -1)
+
+        station_occupied = len(desk_people) > 0
+        best_wl = next((w for w in all_wrist_l if w), None)
+        best_wr = next((w for w in all_wrist_r if w), None)
+
+        process_activity = self._infer_activity(
+            best_wl, best_wr, detected_objects, current_weight, prev_weight, self.wrist_tracker2
         )
-        station_occupied = desk_people > 0
+
+        cv2.putText(annotated, f"Activity: {process_activity}", (10, 44),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(annotated, f"Activity: {process_activity}", (10, 44),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_PASS if process_activity not in ['UNKNOWN', 'IDLE'] else COLOR_IDLE, 1)
 
         cv2.putText(annotated, "CAM2: DESK", (10, annotated.shape[0] - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 1)
@@ -399,27 +453,59 @@ class YoloPipeline:
             'objectConfidences': object_confidences,
             'ppeGloves':         glove_status,
             'stationOccupied':   station_occupied,
+            'processActivity':   process_activity,
         }, annotated
 
     # ─── Merge cam1 + cam2 results ────────────────────────────────────────────
     def merge_results(self, state1: dict, state2: Optional[dict]) -> dict:
         """
         Merge Camera 1 (operator) and Camera 2 (desk) states.
-        OR logic: object/station detected on either camera = detected.
+        OR logic for objects, gloves, stationOccupied, and activity (priority-based).
+        Camera 2 contributes: detectedObjects, objectConfidences, ppeGloves, stationOccupied, processActivity.
         """
         merged = dict(state1)
 
+        def merge_gloves(g1, g2):
+            if g1 == 'PASS' or g2 == 'PASS':
+                return 'PASS'
+            if g1 == 'FAIL' or g2 == 'FAIL':
+                return 'FAIL'
+            return 'UNKNOWN'
+
+        def merge_activity(act1, act2):
+            priority = {
+                'WEIGHING': 5,
+                'POURING_LIKELY': 4,
+                'HANDLING_MATERIAL': 3,
+                'ACTIVE': 2,
+                'IDLE': 1,
+                'UNKNOWN': 0
+            }
+            p1 = priority.get(act1, 0)
+            p2 = priority.get(act2, 0)
+            return act1 if p1 >= p2 else act2
+
         if state2 is None:
-            # cam2 offline — gloves unknown, use cam1 data only
-            merged['ppeGloves'] = 'UNKNOWN'
+            # cam2 offline — gloves and activity from cam1 only
             merged['cam2Online'] = False
-            # PPE: coat + mask only (no glove requirement)
-            if state1['ppeCoat'] and state1['ppeMask']:
-                merged['ppeStatus'] = 'PASS'
-            elif state1['peopleCount'] > 0:
-                merged['ppeStatus'] = 'FAIL'
-            else:
+            # merged['ppeGloves'] is already state1['ppeGloves']
+            # merged['processActivity'] is already state1['processActivity']
+            
+            # PPE check: coat + mask + gloves from cam1
+            has_coat   = state1.get('ppeCoat', False)
+            has_mask   = state1.get('ppeMask', False)
+            gloves     = state1.get('ppeGloves', 'UNKNOWN')
+            
+            if state1['peopleCount'] == 0:
                 merged['ppeStatus'] = 'UNKNOWN'
+            elif has_coat and has_mask and gloves == 'PASS':
+                merged['ppeStatus'] = 'PASS'
+            elif gloves == 'UNKNOWN':
+                # Can't confirm gloves — partial pass (coat+mask OK)
+                merged['ppeStatus'] = 'PASS' if (has_coat and has_mask) else 'FAIL'
+            else:
+                merged['ppeStatus'] = 'FAIL'
+                
             return merged
 
         merged['cam2Online'] = True
@@ -437,16 +523,26 @@ class YoloPipeline:
             confs[cls] = max(confs.get(cls, 0.0), conf)
         merged['objectConfidences'] = confs
 
-        # Gloves from cam2
-        merged['ppeGloves'] = state2.get('ppeGloves', 'UNKNOWN')
+        # Gloves: OR from both cameras (PASS if either reports PASS)
+        merged['ppeGloves'] = merge_gloves(state1.get('ppeGloves', 'UNKNOWN'), state2.get('ppeGloves', 'UNKNOWN'))
 
-        # Station: occupied if either camera sees activity
+        # Activity: pick highest-priority state from both cameras
+        def merge_activity(act1, act2):
+            priority = {'WEIGHING': 5, 'POURING_LIKELY': 4, 'HANDLING_MATERIAL': 3, 'ACTIVE': 2, 'IDLE': 1, 'UNKNOWN': 0}
+            return act1 if priority.get(act1, 0) >= priority.get(act2, 0) else act2
+
+        merged['processActivity'] = merge_activity(
+            state1.get('processActivity', 'UNKNOWN'),
+            state2.get('processActivity', 'UNKNOWN')
+        )
+
+        # Station: occupied if either camera detects a person
         merged['stationOccupied'] = state1.get('stationOccupied', False) or state2.get('stationOccupied', False)
 
-        # PPE: coat (cam1) + mask (cam1) + gloves (cam2)
+        # PPE: coat (cam1) + mask (cam1) + gloves (merged)
         has_coat   = state1.get('ppeCoat', False)
         has_mask   = state1.get('ppeMask', False)
-        gloves     = state2.get('ppeGloves', 'UNKNOWN')
+        gloves     = merged['ppeGloves']
 
         if state1['peopleCount'] == 0:
             merged['ppeStatus'] = 'UNKNOWN'
