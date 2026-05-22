@@ -6,15 +6,15 @@ const API = "http://localhost:3000";
 
 interface StepRow {
   node_id:string; title:string; type:string; status:"PASS"|"DEVIATION"|"PENDING";
-  submitted_value:any; target_value:number|null; unit:string|null; tolerance:string|null;
-  expected_entity:string|null; timestamp:string|null; deviations:any[];
+  submitted_value:unknown; target_value:number|null; unit:string|null; tolerance:string|null;
+  expected_entity:string|null; timestamp:string|null; deviations:unknown[];
 }
 interface Report {
   run_id:string; sop_id:string; status:string;
   started_at:string; completed_at:string|null; duration_seconds:number;
   total_steps:number; passed_steps:number; failed_steps:number; pending_steps:number;
   operator_summary:{ peak_people_count:number; second_verifier_present:boolean; ppe_status:string; last_activity:string; };
-  steps:StepRow[]; deviations:any[]; events_count:number;
+  steps:StepRow[]; deviations:unknown[]; events_count:number;
 }
 
 function fmt(iso:string|null){if(!iso)return"—";try{return new Date(iso).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"})}catch{return iso}}
@@ -174,9 +174,9 @@ export default function ReportPage() {
             <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, fontWeight:600, color:"#ef4444", textTransform:"uppercase", letterSpacing:".1em", marginBottom:14 }}>⚠ Deviation Records ({report.deviations.length})</div>
             {report.deviations.map((d,i)=>(
               <div key={i} style={{ display:"flex", gap:12, marginBottom:10, paddingBottom:10, borderBottom:i<report.deviations.length-1?"1px solid #3d0f0f":"none" }}>
-                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:"#4b5563", flexShrink:0 }}>[{fmt(d.timestamp)}]</span>
-                <span style={{ fontSize:12, color:"#fca5a5" }}>{d.issue}</span>
-                <span style={{ fontSize:11, color:"#565d75", marginLeft:"auto", flexShrink:0 }}>Step: {d.stepId}</span>
+                <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:"#4b5563", flexShrink:0 }}>[{fmt((d as {timestamp:string}).timestamp)}]</span>
+                <span style={{ fontSize:12, color:"#fca5a5" }}>{(d as {issue:string}).issue}</span>
+                <span style={{ fontSize:11, color:"#565d75", marginLeft:"auto", flexShrink:0 }}>Step: {(d as {stepId:string}).stepId}</span>
               </div>
             ))}
           </div>

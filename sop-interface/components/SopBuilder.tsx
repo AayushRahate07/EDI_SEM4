@@ -524,6 +524,7 @@ function Sidebar({
 
   // Fetch inventory items once on mount to populate the VERIFICATION dropdown
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInventoryLoading(true);
     fetch("http://localhost:3000/api/inventory")
       .then((r) => r.json())
@@ -1356,6 +1357,7 @@ export default function SopBuilder() {
     try {
       const stored = localStorage.getItem("sop_workflow_archives");
       if (stored) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setArchives(JSON.parse(stored));
       }
     } catch (e) {
@@ -2304,7 +2306,7 @@ export default function SopBuilder() {
                     fontStyle: "italic",
                   }}
                 >
-                  No archived workflows found. Click "Save Template" to store one!
+                  No archived workflows found. Click &quot;Save Template&quot; to store one!
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

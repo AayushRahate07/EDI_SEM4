@@ -48,24 +48,37 @@ export const SopNodeSchema = z.discriminatedUnion('type', [
   DecisionNodeSchema,
 ]);
 
-export const SopDagSchema = z.object({
-  template_id: z.string(),
-  version: z.string(),
-  start_node_id: z.string().min(1, { message: 'start_node_id must be a non-empty string' }),
-  nodes: z.array(SopNodeSchema),
-}).refine((dag) => {
-  const nodeIds = new Set(dag.nodes.map(n => n.id));
-  if (!nodeIds.has(dag.start_node_id)) return false;
-  const TERMINAL_ID = 'WORKFLOW_COMPLETE';
-  for (const node of dag.nodes) {
-    if (node.type === 'DECISION_BRANCH') {
-      if (Object.values(node.next_nodes).some(t => t !== TERMINAL_ID && !nodeIds.has(t))) return false;
-    } else {
-      if (node.next_nodes.some(t => t !== TERMINAL_ID && !nodeIds.has(t))) return false;
-    }
-  }
-  return true;
-}, { message: "DAG graph validation failed" });
+export const SopDagSchema = z
+  .object({
+    template_id: z.string(),
+    version: z.string(),
+    start_node_id: z
+      .string()
+      .min(1, { message: 'start_node_id must be a non-empty string' }),
+    nodes: z.array(SopNodeSchema),
+  })
+  .refine(
+    (dag) => {
+      const nodeIds = new Set(dag.nodes.map((n) => n.id));
+      if (!nodeIds.has(dag.start_node_id)) return false;
+      const TERMINAL_ID = 'WORKFLOW_COMPLETE';
+      for (const node of dag.nodes) {
+        if (node.type === 'DECISION_BRANCH') {
+          if (
+            Object.values(node.next_nodes).some(
+              (t) => t !== TERMINAL_ID && !nodeIds.has(t),
+            )
+          )
+            return false;
+        } else {
+          if (node.next_nodes.some((t) => t !== TERMINAL_ID && !nodeIds.has(t)))
+            return false;
+        }
+      }
+      return true;
+    },
+    { message: 'DAG graph validation failed' },
+  );
 
 export type SopDag = z.infer<typeof SopDagSchema>;
 export type SopNode = z.infer<typeof SopNodeSchema>;

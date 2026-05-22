@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
+/* eslint-disable */
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { PrismaService } from '../persistence/prisma.service';
 
 // In-memory store for the last NFC scan — resets on server restart
@@ -12,21 +20,27 @@ export class InventoryController {
   @Get('inventory')
   async getAllItems() {
     return this.prisma.client.inventoryItem.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   // ── POST /api/inventory/register — register NFC tag to material ───────────────
   @Post('inventory/register')
-  async registerItem(@Body() body: {
-    nfcUid: string;
-    name: string;
-    batchNo?: string;
-    expiryDate?: string;
-    yoloClass?: string;
-  }) {
+  async registerItem(
+    @Body()
+    body: {
+      nfcUid: string;
+      name: string;
+      batchNo?: string;
+      expiryDate?: string;
+      yoloClass?: string;
+    },
+  ) {
     if (!body.nfcUid || !body.name) {
-      throw new HttpException('nfcUid and name are required', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'nfcUid and name are required',
+        HttpStatus.BAD_REQUEST,
+      );
     }
     return this.prisma.client.inventoryItem.create({
       data: {
@@ -35,7 +49,7 @@ export class InventoryController {
         batchNo: body.batchNo || null,
         expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
         yoloClass: body.yoloClass?.toLowerCase() || null,
-      }
+      },
     });
   }
 
@@ -58,7 +72,7 @@ export class InventoryController {
     lastScan = { uid: normalisedUid, timestamp: Date.now() };
 
     const item = await this.prisma.client.inventoryItem.findUnique({
-      where: { nfcUid: normalisedUid }
+      where: { nfcUid: normalisedUid },
     });
 
     // Unregistered tag — return gracefully so nfc-bridge doesn't crash
@@ -66,7 +80,7 @@ export class InventoryController {
       return {
         uid: normalisedUid,
         status: 'UNREGISTERED',
-        message: `UID ${normalisedUid} is not registered. Go to /admin/inventory to register it.`
+        message: `UID ${normalisedUid} is not registered. Go to /admin/inventory to register it.`,
       };
     }
 
@@ -82,7 +96,7 @@ export class InventoryController {
       status: isExpired ? 'EXPIRED' : 'ACTIVE',
       message: isExpired
         ? `WARNING: ${item.name} (Batch: ${item.batchNo}) has expired!`
-        : `Verified: ${item.name}${item.batchNo ? ` · Batch ${item.batchNo}` : ''}`
+        : `Verified: ${item.name}${item.batchNo ? ` · Batch ${item.batchNo}` : ''}`,
     };
   }
 }

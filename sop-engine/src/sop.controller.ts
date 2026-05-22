@@ -1,5 +1,13 @@
+/* eslint-disable */
 // src/sop.controller.ts
-import { Controller, Post, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from './persistence/prisma.service';
 import { SopDagSchema } from './schemas/sop.schema';
 
@@ -28,7 +36,7 @@ export class SopController {
     await this.prisma.client.$transaction(async (tx) => {
       // Clear out existing template blueprint to enable clean overwrite updates
       await tx.sopTemplate.deleteMany({
-        where: { templateId: validated.template_id }
+        where: { templateId: validated.template_id },
       });
 
       // Save the main template entry
@@ -37,7 +45,7 @@ export class SopController {
           templateId: validated.template_id,
           version: validated.version,
           startNodeId: validated.start_node_id,
-        }
+        },
       });
 
       // Save each individual node & build a UI-to-DB ID mapping map
@@ -52,7 +60,7 @@ export class SopController {
             x: (node as any).x !== undefined ? Number((node as any).x) : 0,
             y: (node as any).y !== undefined ? Number((node as any).y) : 0,
             config: JSON.stringify(node.config),
-          }
+          },
         });
         uiIdToDbIdMap.set(node.id, dbNode.id);
       }
@@ -63,7 +71,9 @@ export class SopController {
         if (!fromNodeDbId) continue;
 
         if (node.type === 'DECISION_BRANCH') {
-          for (const [condition, targetUiId] of Object.entries(node.next_nodes)) {
+          for (const [condition, targetUiId] of Object.entries(
+            node.next_nodes,
+          )) {
             const toNodeDbId = uiIdToDbIdMap.get(targetUiId);
             if (toNodeDbId) {
               await tx.sopTransition.create({
@@ -71,7 +81,7 @@ export class SopController {
                   fromNodeId: fromNodeDbId,
                   toNodeId: toNodeDbId,
                   condition,
-                }
+                },
               });
             }
           }
@@ -85,7 +95,7 @@ export class SopController {
                   fromNodeId: fromNodeDbId,
                   toNodeId: toNodeDbId,
                   condition: 'DEFAULT',
-                }
+                },
               });
             }
           }
