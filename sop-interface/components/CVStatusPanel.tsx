@@ -69,7 +69,7 @@ export default function CVStatusPanel({ yoloState, expectedContainer }: CVStatus
         </div>
         {!imgError ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="http://localhost:8001/video_feed" alt="YOLO live feed" style={{ width:"100%", display:"block", maxHeight:200, objectFit:"cover" }} onError={()=>setImgError(true)} />
+          <img src="http://localhost:8001/video_feed" alt="YOLO live feed" style={{ width:"100%", display:"block", maxHeight:360, objectFit:"contain", background:"#000" }} onError={()=>setImgError(true)} />
         ) : (
           <div style={{ height:160, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
             <span style={{ fontSize:28, opacity:0.3 }}>📷</span>

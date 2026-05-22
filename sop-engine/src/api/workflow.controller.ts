@@ -105,6 +105,17 @@ export class WorkflowController {
     };
   }
 
+  // ── GET /runs/active — Latest active run (used by CV service auto-attach) ────
+  @Get('active')
+  async getActiveRun() {
+    const run = await this.prisma.client.workflowRun.findFirst({
+      where: { status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!run) throw new NotFoundException('No active workflow run found.');
+    return { run_id: run.id, sop_id: run.sopId, status: run.status };
+  }
+
   // ── POST /runs/:id/events — Send an event to the running workflow ─────────────
   @Post(':id/events')
   async processEvent(

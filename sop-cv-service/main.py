@@ -227,9 +227,24 @@ def main():
     global _run_id
 
     parser = argparse.ArgumentParser(description='SOP CV Service')
-    parser.add_argument('--run-id', required=True, help='Active workflow run UUID')
+    parser.add_argument('--run-id', required=False, default=None,
+                        help='Active workflow run UUID (omit to auto-attach to latest active run)')
     args = parser.parse_args()
-    _run_id = args.run_id
+
+    if args.run_id:
+        _run_id = args.run_id
+    else:
+        # Auto-detect: ask engine for the latest active run
+        print("[CV] No --run-id given. Fetching latest active run from engine...")
+        try:
+            r = requests.get(f"{BACKEND}/runs/active", timeout=5)
+            r.raise_for_status()
+            _run_id = r.json()['run_id']
+            print(f"[CV] Auto-attached to run: {_run_id}")
+        except Exception as e:
+            print(f"[CV] ERROR: Could not fetch active run from engine: {e}")
+            print(f"[CV] Is sop-engine running? Is there an active workflow run?")
+            import sys; sys.exit(1)
 
     print("=" * 60)
     print("  SOP CV Service")

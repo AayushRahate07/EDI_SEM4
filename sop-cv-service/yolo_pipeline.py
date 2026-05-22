@@ -13,18 +13,23 @@ from ultralytics import YOLO
 
 # ─── COCO class indices ────────────────────────────────────────────────────────
 PERSON_CLASS_ID = 0
-BOTTLE_CLASS_ID = 39
-CUP_CLASS_ID    = 41
-BOWL_CLASS_ID   = 45
+# Minimum confidence for object detection
+OBJECT_CONF_THRESHOLD = 0.08   # low: moving objects are blurry — persistence filter handles false positives
+OBJECT_CONF_STATIONARY = 0.12  # higher bar when object is still (less blur noise)
 
+# COCO class IDs relevant to a pharmaceutical dispensing workstation
 RELEVANT_OBJECTS = {
-    BOTTLE_CLASS_ID: 'bottle',
-    CUP_CLASS_ID:    'cup',      # metallic tins, beakers, cups
-    BOWL_CLASS_ID:   'bowl',
+    39: 'bottle',       # reagent bottles, dispensing containers
+    41: 'cup',          # beakers, metallic cups
+    45: 'bowl',         # weighing bowls, dishes
+    26: 'handbag',      # sample bags, zip-lock bags
+    76: 'scissors',     # cutting tools, spatulas (sometimes misclassified)
+    73: 'book',         # batch records, lab notebooks
+    63: 'laptop',       # workstation computer
+    67: 'cell phone',   # operator phone (deviation risk)
+    75: 'vase',         # volumetric flasks
+    64: 'mouse',        # PC peripherals at workstation
 }
-
-# Minimum confidence for object detection (intentionally low — objects are often at distance)
-OBJECT_CONF_THRESHOLD = 0.15
 
 # YOLOv8-pose keypoint indices (COCO 17-keypoint format)
 KP_LEFT_WRIST  = 9
@@ -106,6 +111,12 @@ class YoloPipeline:
             idle_seconds=config.get('wrist_idle_seconds', 2.0),
         )
 
+        # ── Detection persistence (motion blur compensation) ─────────────────────
+        # Stores {class_name: frames_since_last_seen} — keeps objects alive during blur
+        self._obj_last_seen: dict[str, int]   = {}   # frames since last confident detection
+        self._obj_best_conf: dict[str, float] = {}   # best confidence seen while alive
+        self.obj_persistence = config.get('object_persistence_frames', 8)  # keep alive for N frames
+
         print("[YOLO] Loading YOLOv8n-pose model (person + keypoints)...")
         self.pose_model = YOLO('yolov8n-pose.pt')   # detects: person + keypoints
         print("[YOLO] Loading YOLOv8n detection model (objects)...")
@@ -162,6 +173,12 @@ class YoloPipeline:
 
     def _infer_activity(self, wrist_l, wrist_r, detected_objects, current_weight, prev_weight) -> str:
         self.wrist_tracker.update(wrist_l, wrist_r)
+
+        # If wrist keypoints unavailable (person only partially in frame),
+        # fall back to IDLE rather than UNKNOWN
+        if wrist_l is None and wrist_r is None:
+            return 'IDLE'
+
         velocity  = self.wrist_tracker.get_velocity()
         direction = self.wrist_tracker.get_trajectory_direction()
 
@@ -182,13 +199,16 @@ class YoloPipeline:
         if near_scale and weight_changing:
             return 'WEIGHING'
 
-        if direction == 'down' and velocity > 8 and any(o in detected_objects for o in ['bottle', 'bowl', 'cup']):
+        if direction == 'down' and velocity > 8 and any(o in detected_objects for o in ['bottle', 'bowl', 'cup', 'vase']):
             return 'POURING_LIKELY'
 
         if velocity > 3:
             return 'HANDLING_MATERIAL' if detected_objects else 'ACTIVE'
 
-        return 'UNKNOWN'
+        if velocity > 0.5:
+            return 'ACTIVE'
+
+        return 'IDLE'
 
     # ── Tier 3: check if object held long enough for auto-verification ──────────
     def check_auto_verify(self, target_class: str, object_confidences: dict) -> Optional[float]:
@@ -226,19 +246,45 @@ class YoloPipeline:
         person_bboxes      = []
         all_wrist_l, all_wrist_r = [], []
 
-        # ── Object detections ──────────────────────────────────────────────────
+        # ── Object detections (with motion-blur persistence) ───────────────────
+        fresh_detections: dict[str, float] = {}   # class_name → conf this frame
+
         for det in detect_r.boxes:
             cls_id = int(det.cls[0])
             conf   = float(det.conf[0])
             x1, y1, x2, y2 = map(int, det.xyxy[0])
             if cls_id in RELEVANT_OBJECTS and conf > OBJECT_CONF_THRESHOLD:
                 obj_name = RELEVANT_OBJECTS[cls_id]
-                if obj_name not in detected_objects:
-                    detected_objects.append(obj_name)
-                object_confidences[obj_name] = max(object_confidences.get(obj_name, 0.0), conf)
+                fresh_detections[obj_name] = max(fresh_detections.get(obj_name, 0.0), conf)
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), COLOR_WARN, 2)
                 cv2.putText(annotated, f"{obj_name} {conf:.0%}", (x1, y1 - 6),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLOR_WARN, 2)
+
+        # Age all tracked objects (+1 frame since last seen)
+        for name in list(self._obj_last_seen.keys()):
+            self._obj_last_seen[name] += 1
+
+        # Merge fresh detections — reset age & update best confidence
+        for name, conf in fresh_detections.items():
+            self._obj_last_seen[name] = 0
+            self._obj_best_conf[name] = max(self._obj_best_conf.get(name, 0.0), conf)
+
+        # Expire objects not seen for > persistence window
+        for name in list(self._obj_last_seen.keys()):
+            if self._obj_last_seen[name] > self.obj_persistence:
+                del self._obj_last_seen[name]
+                self._obj_best_conf.pop(name, None)
+
+        # Final detected set = fresh + recently-seen (ghost detections during blur)
+        for name, age in self._obj_last_seen.items():
+            conf = self._obj_best_conf.get(name, 0.0)
+            if name not in detected_objects:
+                detected_objects.append(name)
+            object_confidences[name] = conf
+            # Draw ghost label (faded) for persisted-but-not-fresh detections
+            if name not in fresh_detections:
+                cv2.putText(annotated, f"{name} ~{conf:.0%} [held]", (10, 180),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 180, 255), 1)
 
         # ── Person detections ──────────────────────────────────────────────────
         for det in pose_r.boxes:

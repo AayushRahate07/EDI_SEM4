@@ -148,6 +148,7 @@ export default function RunDashboard() {
           {/* Active step panel */}
           {currentNode?.type==="VERIFICATION"&&!isComplete&&(
             <MaterialVerificationPanel
+              key={currentNode.id}
               expectedEntity={currentNode.config.entity_name}
               expectedYoloClass={currentYoloClass}
               detectedObjects={status?.yoloState?.detectedObjects ?? []}
@@ -157,6 +158,7 @@ export default function RunDashboard() {
           )}
           {currentNode?.type==="MEASUREMENT"&&!isComplete&&(
             <WeightMonitorPanel
+              key={currentNode.id}
               targetValue={currentNode.config.target_value}
               tolerancePositive={currentNode.config.tolerance_positive}
               toleranceNegative={currentNode.config.tolerance_negative}

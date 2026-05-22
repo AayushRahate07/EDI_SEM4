@@ -10,7 +10,7 @@ interface MaterialVerificationPanelProps {
   onEventSent?: () => void;
 }
 
-type ScanState = "AWAITING" | "SCANNING" | "VERIFIED" | "MISMATCH" | "EXPIRED" | "UNREGISTERED";
+type ScanState = "AWAITING" | "SCANNING" | "VERIFIED" | "MISMATCH" | "EXPIRED" | "UNREGISTERED" | "OBJECT_NOT_DETECTED";
 
 interface ScanResult {
   uid: string;
@@ -22,12 +22,13 @@ interface ScanResult {
 }
 
 const STATE_STYLE: Record<ScanState, { color: string; bg: string; border: string; label: string; icon: string }> = {
-  AWAITING:     { color: "#565d75", bg: "#0d0f14", border: "#2a2f3d", label: "AWAITING NFC SCAN", icon: "○" },
-  SCANNING:     { color: "#f59e0b", bg: "#1a1200", border: "#4a3600", label: "READING TAG...",     icon: "◌" },
-  VERIFIED:     { color: "#2dd4a0", bg: "#0a2620", border: "#1a4a38", label: "✓ VERIFIED",         icon: "✓" },
-  MISMATCH:     { color: "#ef4444", bg: "#1a0808", border: "#6b2230", label: "✗ WRONG MATERIAL",   icon: "✗" },
-  EXPIRED:      { color: "#f59e0b", bg: "#1a1200", border: "#7a4000", label: "⚠ EXPIRED BATCH",   icon: "⚠" },
-  UNREGISTERED: { color: "#8890a8", bg: "#0d0f14", border: "#2a2f3d", label: "? NOT REGISTERED",  icon: "?" },
+  AWAITING:             { color: "#565d75", bg: "#0d0f14", border: "#2a2f3d", label: "AWAITING NFC SCAN",        icon: "○" },
+  SCANNING:             { color: "#f59e0b", bg: "#1a1200", border: "#4a3600", label: "READING TAG...",            icon: "◌" },
+  VERIFIED:             { color: "#2dd4a0", bg: "#0a2620", border: "#1a4a38", label: "✓ VERIFIED",               icon: "✓" },
+  MISMATCH:             { color: "#ef4444", bg: "#1a0808", border: "#6b2230", label: "✗ WRONG MATERIAL",         icon: "✗" },
+  EXPIRED:              { color: "#f59e0b", bg: "#1a1200", border: "#7a4000", label: "⚠ EXPIRED BATCH",         icon: "⚠" },
+  UNREGISTERED:         { color: "#8890a8", bg: "#0d0f14", border: "#2a2f3d", label: "? NOT REGISTERED",        icon: "?" },
+  OBJECT_NOT_DETECTED:  { color: "#ef4444", bg: "#1a0808", border: "#6b2230", label: "✗ OBJECT NOT IN CAMERA",  icon: "📷" },
 };
 
 export default function MaterialVerificationPanel({
@@ -79,7 +80,7 @@ export default function MaterialVerificationPanel({
         const scanData: ScanResult = await scanRes.json();
         setScanResult(scanData);
 
-        // Determine outcome
+        // ── Gate 1: check inventory status ──────────────────────────────
         if (scanData.status === "UNREGISTERED") {
           setScanState("UNREGISTERED");
           processingRef.current = false;
@@ -88,7 +89,6 @@ export default function MaterialVerificationPanel({
 
         if (scanData.status === "EXPIRED") {
           setScanState("EXPIRED");
-          // Still fire a DEVIATION — expired material used
           await fetch(`http://localhost:3000/runs/${runId}/events`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -101,7 +101,16 @@ export default function MaterialVerificationPanel({
           return;
         }
 
-        // Check material name match
+        // ── Gate 2: CV object presence check ────────────────────────────
+        // Engine returns status: OBJECT_NOT_DETECTED when yoloClass not in frame
+        if (scanData.status === "OBJECT_NOT_DETECTED") {
+          setScanResult(scanData);  // show the engine's message to operator
+          setScanState("OBJECT_NOT_DETECTED");
+          processingRef.current = false;
+          return;  // ← BLOCK: do NOT fire EXECUTE_STEP
+        }
+
+        // ── Gate 3: material name match ──────────────────────────────────
         const isMatch = scanData.name?.toLowerCase().trim() === expectedEntity.toLowerCase().trim();
 
         if (isMatch) {
@@ -115,6 +124,7 @@ export default function MaterialVerificationPanel({
                 success: true,
                 nfc_uid: scanData.uid,
                 batch_no: scanData.batchNo,
+                cv_check: scanData.cvCheckResult ?? "SKIPPED",
                 yolo_container_detected: containerDetected,
                 source: "NFC",
               }
@@ -206,7 +216,7 @@ export default function MaterialVerificationPanel({
       )}
 
       {/* Retry on mismatch/unregistered/expired */}
-      {(scanState === "MISMATCH" || scanState === "UNREGISTERED" || scanState === "EXPIRED") && (
+      {(scanState === "MISMATCH" || scanState === "UNREGISTERED" || scanState === "EXPIRED" || scanState === "OBJECT_NOT_DETECTED") && (
         <button onClick={retry} style={{ background: "transparent", border: `1px solid ${sc.border}`, color: sc.color, borderRadius: 6, padding: "8px 0", fontSize: 11, cursor: "pointer", fontFamily: "'IBM Plex Mono',monospace", letterSpacing: ".06em" }}>
           SCAN AGAIN
         </button>

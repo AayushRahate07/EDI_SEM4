@@ -13,7 +13,7 @@
   },
   "flask_port": 8001,
   "camera_index": 0,
-  "yolo_interval_ms": 500,
+  "yolo_interval_ms": 200,
   "ocr_interval_ms": 800,
   "push_interval_ms": 300,
   "ppe_white_ratio_threshold": 0.55,
@@ -22,5 +22,6 @@
   "wrist_idle_seconds": 2.0,
   "person_confidence_threshold": 0.20,
   "auto_verify_confidence_threshold": 0.45,
-  "auto_verify_hold_frames": 5
+  "auto_verify_hold_frames": 5,
+  "object_persistence_frames": 8
 }
