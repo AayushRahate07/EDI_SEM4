@@ -1,0 +1,385 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Batch Compliance Report - SOP-sop-run-1779480320889</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #060810;
+      color: #d4d8e8;
+      font-family: 'DM Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 32px;
+    }
+    .header-card {
+      background: #0e1117;
+      border: 1px solid #1c2130;
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .title-sub {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      margin-bottom: 8px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: .02em;
+    }
+    .run-id {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: #565d75;
+      margin-top: 6px;
+    }
+    .status-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      border-radius: 6px;
+      padding: 8px 18px;
+    }
+    .status-completed {
+      color: #2dd4a0;
+      background: #0a2620;
+      border: 1px solid #1a4a38;
+    }
+    .status-deviation {
+      color: #ef4444;
+      background: #1a0808;
+      border: 1px solid #6b2230;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: #0e1117;
+      border: 1px solid #1c2130;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .stat-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 26px;
+      font-weight: 700;
+    }
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .details-card {
+      background: #0e1117;
+      border: 1px solid #1c2130;
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .details-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 12px;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .detail-label {
+      color: #4b5563;
+    }
+    .detail-value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: #8890a8;
+    }
+    .audit-table-card {
+      background: #0e1117;
+      border: 1px solid #1c2130;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .table-header {
+      background: #090a0f;
+      border-bottom: 1px solid #1c2130;
+      padding: 14px 20px;
+    }
+    .table-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      color: #4b5563;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-weight: 600;
+      border-bottom: 1px solid #1c2130;
+    }
+    td {
+      padding: 11px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid #1c2130;
+    }
+    .type-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+    .type-verify {
+      background: #0a2620;
+      color: #2dd4a0;
+      border: 1px solid #1a4a38;
+    }
+    .type-measure {
+      background: #0a1830;
+      color: #4da6ff;
+      border: 1px solid #1a3060;
+    }
+    .result-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 3px;
+    }
+    .result-pass {
+      color: #2dd4a0;
+      background: #0a2620;
+      border: 1px solid #1a4a38;
+    }
+    .result-fail {
+      color: #ef4444;
+      background: #1a0808;
+      border: 1px solid #6b2230;
+    }
+    .deviations-card {
+      background: #1a0808;
+      border: 1px solid #7f1d1d;
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+    .deviations-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      color: #ef4444;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 14px;
+    }
+    .deviation-item {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #3d0f0f;
+    }
+    .deviation-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .footer {
+      text-align: center;
+      padding-top: 20px;
+      border-top: 1px solid #1c2130;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: #3a4055;
+    }
+    @media print {
+      body { background: #fff !important; color: #000 !important; }
+      .container { padding: 20px 0; }
+      .header-card, .stat-card, .details-card, .audit-table-card, .deviations-card {
+        background: #fff !important;
+        border: 1px solid #ccc !important;
+        color: #000 !important;
+      }
+      h1, .stat-value, td, th { color: #000 !important; }
+      .status-badge, .type-badge, .result-badge {
+        background: #fff !important;
+        border: 1px solid #000 !important;
+        color: #000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header-card">
+      <div>
+        <div class="title-sub">Batch Compliance Report</div>
+        <h1>SOP-sop-run-1779480320889</h1>
+        <div class="run-id">Run ID: 648146ce-01ad-45e5-92ae-fa07b7612d67</div>
+      </div>
+      <div class="status-badge status-completed">
+        COMPLETED
+      </div>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Steps</div>
+        <div class="stat-value" style="color: #d4d8e8;">1</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Passed</div>
+        <div class="stat-value" style="color: #2dd4a0;">1</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Deviations</div>
+        <div class="stat-value" style="color: #2dd4a0;">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value" style="color: #8890a8;">0m 19s</div>
+      </div>
+    </div>
+
+    <!-- Timing & Operator Info -->
+    <div class="details-grid">
+      <div class="details-card">
+        <div class="details-title">Timestamps</div>
+        <div class="detail-row">
+          <span class="detail-label">Started</span>
+          <span class="detail-value">23 May 2026, 01:35:20 am</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Completed</span>
+          <span class="detail-value">23 May 2026, 01:35:40 am</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Duration</span>
+          <span class="detail-value">0m 19s</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Events Logged</span>
+          <span class="detail-value">1</span>
+        </div>
+      </div>
+
+      <div class="details-card">
+        <div class="details-title">Operator Summary (CV)</div>
+        <div class="detail-row">
+          <span class="detail-label">People Detected</span>
+          <span class="detail-value" style="color: #2dd4a0">
+            1
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Second Verifier</span>
+          <span class="detail-value" style="color: #ef4444">
+            NO
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">PPE Compliance</span>
+          <span class="detail-value" style="color: #ef4444">
+            FAIL
+          </span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Last Activity</span>
+          <span class="detail-value" style="color: #2dd4a0;">IDLE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step Audit Table -->
+    <div class="audit-table-card">
+      <div class="table-header">
+        <span class="table-title">Step-by-Step Audit</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Step</th>
+            <th>Type</th>
+            <th>Submitted Value</th>
+            <th>Target</th>
+            <th>Result</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+        <tr style="background: transparent">
+          <td style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #3a4055; padding: 11px 14px; border-bottom: 1px solid #1c2130;">1</td>
+          <td style="font-size: 13px; color: #d4d8e8; font-weight: 500; padding: 11px 14px; border-bottom: 1px solid #1c2130;">New Verification</td>
+          <td style="padding: 11px 14px; border-bottom: 1px solid #1c2130;">
+            <span class="type-badge type-verify">VERIFY</span>
+          </td>
+          <td style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8890a8; padding: 11px 14px; border-bottom: 1px solid #1c2130;">Salt</td>
+          <td style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #565d75; padding: 11px 14px; border-bottom: 1px solid #1c2130;">Salt</td>
+          <td style="padding: 11px 14px; border-bottom: 1px solid #1c2130;">
+            <span class="result-badge result-pass">PASS</span>
+          </td>
+          <td style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #3a4055; padding: 11px 14px; border-bottom: 1px solid #1c2130;">23 May 2026, 01:35:38 am</td>
+        </tr>
+      
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Deviations Section -->
+    
+
+    <!-- Footer -->
+    <div class="footer">
+      Generated by SOP Compliance Engine · 23/5/2026, 1:35:44 am · Run 648146ce-01ad-45e5-92ae-fa07b7612d67
+    </div>
+  </div>
+</body>
+</html>
+    

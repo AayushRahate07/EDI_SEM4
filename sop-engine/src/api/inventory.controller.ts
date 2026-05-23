@@ -3,7 +3,10 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
+  Param,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -32,7 +35,7 @@ async function fetchCvDetectedObjects(): Promise<string[] | null> {
       o.toLowerCase(),
     );
   } catch {
-    return null;  // null = genuinely unreachable (timeout / connection refused)
+    return null; // null = genuinely unreachable (timeout / connection refused)
   }
 }
 
@@ -66,15 +69,78 @@ export class InventoryController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    return this.prisma.client.inventoryItem.create({
-      data: {
-        nfcUid: body.nfcUid.toUpperCase(),
-        name: body.name,
-        batchNo: body.batchNo || null,
-        expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
-        yoloClass: body.yoloClass?.toLowerCase() || null,
-      },
-    });
+    try {
+      return await this.prisma.client.inventoryItem.create({
+        data: {
+          nfcUid: body.nfcUid.toUpperCase(),
+          name: body.name,
+          batchNo: body.batchNo || null,
+          expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+          yoloClass: body.yoloClass?.toLowerCase() || null,
+        },
+      });
+    } catch (err: any) {
+      // P2002 = unique constraint violation (NFC UID already registered)
+      if (err?.code === 'P2002') {
+        throw new HttpException(
+          `NFC tag ${body.nfcUid.toUpperCase()} is already registered. Tap a different tag or delete the existing entry first.`,
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw err;
+    }
+  }
+
+  // ── PATCH /api/inventory/:id — update an existing inventory item ──────────────
+  @Patch('inventory/:id')
+  async updateItem(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      batchNo?: string;
+      expiryDate?: string;
+      yoloClass?: string;
+    },
+  ) {
+    const existing = await this.prisma.client.inventoryItem.findUnique({ where: { id } });
+    if (!existing) {
+      throw new HttpException(`Inventory item ${id} not found`, HttpStatus.NOT_FOUND);
+    }
+    try {
+      return await this.prisma.client.inventoryItem.update({
+        where: { id },
+        data: {
+          ...(body.name !== undefined && { name: body.name }),
+          ...(body.batchNo !== undefined && { batchNo: body.batchNo || null }),
+          ...(body.expiryDate !== undefined && {
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+          }),
+          ...(body.yoloClass !== undefined && {
+            yoloClass: body.yoloClass?.toLowerCase() || null,
+          }),
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new HttpException(
+          'That NFC UID is already assigned to another item.',
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw err;
+    }
+  }
+
+  // ── DELETE /api/inventory/:id — remove an inventory item ─────────────────────
+  @Delete('inventory/:id')
+  async deleteItem(@Param('id') id: string) {
+    const existing = await this.prisma.client.inventoryItem.findUnique({ where: { id } });
+    if (!existing) {
+      throw new HttpException(`Inventory item ${id} not found`, HttpStatus.NOT_FOUND);
+    }
+    await this.prisma.client.inventoryItem.delete({ where: { id } });
+    return { success: true, deleted: id };
   }
 
   // ── GET /api/hardware/last-scan — last scanned UID ────────────────────────────

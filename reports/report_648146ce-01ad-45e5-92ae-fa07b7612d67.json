@@ -1,0 +1,35 @@
+{
+  "run_id": "648146ce-01ad-45e5-92ae-fa07b7612d67",
+  "sop_id": "SOP-sop-run-1779480320889",
+  "status": "COMPLETED",
+  "started_at": "2026-05-22T20:05:20.918Z",
+  "completed_at": "2026-05-22T20:05:40.210Z",
+  "duration_seconds": 19,
+  "total_steps": 1,
+  "passed_steps": 1,
+  "failed_steps": 0,
+  "pending_steps": 0,
+  "operator_summary": {
+    "peak_people_count": 1,
+    "second_verifier_present": false,
+    "ppe_status": "FAIL",
+    "last_activity": "IDLE"
+  },
+  "steps": [
+    {
+      "node_id": "step_1779458833304_0",
+      "title": "New Verification",
+      "type": "VERIFICATION",
+      "status": "PASS",
+      "submitted_value": "Salt",
+      "target_value": null,
+      "unit": null,
+      "tolerance": null,
+      "expected_entity": "Salt",
+      "timestamp": "2026-05-22T20:05:38.976Z",
+      "deviations": []
+    }
+  ],
+  "deviations": [],
+  "events_count": 1
+}
