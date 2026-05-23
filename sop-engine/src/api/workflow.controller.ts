@@ -105,6 +105,22 @@ export class WorkflowController {
     };
   }
 
+  // ── GET /runs — List all workflow runs ───────────────────────────────────────
+  @Get()
+  async getAllRuns() {
+    return this.prisma.client.workflowRun.findMany({
+      select: {
+        id: true,
+        sopId: true,
+        status: true,
+        currentState: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   // ── GET /runs/active — Latest active run (used by CV service auto-attach) ────
   @Get('active')
   async getActiveRun() {

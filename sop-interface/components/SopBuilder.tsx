@@ -1907,6 +1907,17 @@ export default function SopBuilder() {
           color: #ffffff;
         }
 
+        .btn-reports {
+          background: rgba(99, 102, 241, 0.05);
+          border: 1px solid rgba(99, 102, 241, 0.25);
+          color: #a5b4fc;
+        }
+        .btn-reports:hover {
+          background: rgba(99, 102, 241, 0.8);
+          border-color: rgba(129, 140, 248, 0.85);
+          color: #ffffff;
+        }
+
         .btn-deploy {
           background: rgba(16, 185, 129, 0.05);
           border: 1px solid rgba(16, 185, 129, 0.35);
@@ -1959,7 +1970,7 @@ export default function SopBuilder() {
             textShadow: "0 0 10px rgba(86, 93, 117, 0.2)",
           }}
         >
-          SOP WORKFLOW CANVAS
+          VERIFLOW : SOP WORKFLOW CANVAS
         </div>
 
         {/* Right - Control actions */}
@@ -1978,6 +1989,14 @@ export default function SopBuilder() {
           >
             <span className="material-symbols-outlined">nfc</span>
             <span>Inventory</span>
+          </button>
+
+          <button
+            onClick={() => window.open("/reports", "_blank")}
+            className="topbar-btn btn-reports"
+          >
+            <span className="material-symbols-outlined">history</span>
+            <span>Reports</span>
           </button>
 
           <button

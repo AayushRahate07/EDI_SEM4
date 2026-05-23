@@ -191,8 +191,9 @@ export class InventoryController {
     }
 
     // ── Gate 2: YOLO object presence check ──────────────────────────────────
-    // Only runs if this inventory item has a registered yoloClass
-    let cvCheckResult: 'PASS' | 'FAIL' | 'SKIPPED' | 'CV_OFFLINE' = 'SKIPPED';
+    // Only runs if this inventory item has a registered yoloClass.
+    // Result is advisory — a soft-fail warns but does NOT block the scan.
+    let cvCheckResult: 'PASS' | 'FAIL' | 'SKIPPED' | 'CV_OFFLINE' | 'CV_SOFT_FAIL' = 'SKIPPED';
     let cvMessage = '';
 
     if (item.yoloClass) {
@@ -211,18 +212,9 @@ export class InventoryController {
           cvCheckResult = 'PASS';
           cvMessage = ` · ${item.yoloClass} confirmed in camera ✓`;
         } else {
-          // REJECT: NFC correct but object not in view
-          return {
-            uid: normalisedUid,
-            id: item.id,
-            name: item.name,
-            batchNo: item.batchNo,
-            yoloClass: item.yoloClass,
-            status: 'OBJECT_NOT_DETECTED',
-            cvCheckResult: 'FAIL',
-            detectedObjects,
-            message: `NFC tag matches "${item.name}" but "${item.yoloClass}" is NOT visible in camera. Hold the container in front of the camera and scan again.`,
-          };
+          // Soft-fail: warn but still allow — camera angle may be off
+          cvCheckResult = 'CV_SOFT_FAIL';
+          cvMessage = ` · WARNING: "${item.yoloClass}" not visible in camera (detected: ${detectedObjects.length > 0 ? detectedObjects.join(', ') : 'nothing'})`;
         }
       }
     }

@@ -1,0 +1,113 @@
+{
+  "run_id": "853aed0b-ecce-4f56-b610-3ebeb6081af3",
+  "sop_id": "SOP-sop-run-1779511463251",
+  "status": "COMPLETED",
+  "started_at": "2026-05-23T04:44:23.273Z",
+  "completed_at": "2026-05-23T04:46:09.472Z",
+  "duration_seconds": 106,
+  "total_steps": 7,
+  "passed_steps": 7,
+  "failed_steps": 0,
+  "pending_steps": 0,
+  "operator_summary": {
+    "peak_people_count": 3,
+    "second_verifier_present": true,
+    "ppe_status": "FAIL",
+    "last_activity": "HANDLING_MATERIAL"
+  },
+  "steps": [
+    {
+      "node_id": "step_1779510988937_0",
+      "title": "verify container",
+      "type": "VERIFICATION",
+      "status": "PASS",
+      "submitted_value": "SMALL CONTAINER",
+      "target_value": null,
+      "unit": null,
+      "tolerance": null,
+      "expected_entity": "SMALL CONTAINER",
+      "timestamp": "2026-05-23T04:44:29.331Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779511007491_1",
+      "title": "verify blue",
+      "type": "VERIFICATION",
+      "status": "PASS",
+      "submitted_value": "BLUE",
+      "target_value": null,
+      "unit": null,
+      "tolerance": null,
+      "expected_entity": "BLUE",
+      "timestamp": "2026-05-23T04:44:39.340Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779511028667_2",
+      "title": "add 10g of blue",
+      "type": "MEASUREMENT",
+      "status": "PASS",
+      "submitted_value": 11,
+      "target_value": 10,
+      "unit": "g",
+      "tolerance": "±2g",
+      "expected_entity": null,
+      "timestamp": "2026-05-23T04:45:05.706Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779511051758_3",
+      "title": "verify yellow",
+      "type": "VERIFICATION",
+      "status": "PASS",
+      "submitted_value": "YELLOW",
+      "target_value": null,
+      "unit": null,
+      "tolerance": null,
+      "expected_entity": "YELLOW",
+      "timestamp": "2026-05-23T04:45:14.333Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779511071909_4",
+      "title": "add 5g of yellow",
+      "type": "MEASUREMENT",
+      "status": "PASS",
+      "submitted_value": 15.97,
+      "target_value": 5,
+      "unit": "mg",
+      "tolerance": "±1mg",
+      "expected_entity": null,
+      "timestamp": "2026-05-23T04:45:40.816Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779511092176_5",
+      "title": "verify pink",
+      "type": "VERIFICATION",
+      "status": "PASS",
+      "submitted_value": "PINK",
+      "target_value": null,
+      "unit": null,
+      "tolerance": null,
+      "expected_entity": "PINK",
+      "timestamp": "2026-05-23T04:45:47.348Z",
+      "deviations": []
+    },
+    {
+      "node_id": "step_1779511113993_6",
+      "title": "add 15g of pink",
+      "type": "MEASUREMENT",
+      "status": "PASS",
+      "submitted_value": 30,
+      "target_value": 15,
+      "unit": "g",
+      "tolerance": "±5g",
+      "expected_entity": null,
+      "timestamp": "2026-05-23T04:46:09.473Z",
+      "deviations": []
+    }
+  ],
+  "deviations": [],
+  "events_count": 7
+}
